@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tunea Tu Combi</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --panel: rgba(18, 18, 22, 0.82);
+        --border: rgba(255, 255, 255, 0.14);
+        --text: #f2f2f4;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0b0e; }
+      body {
+        font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--text);
+      }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; }
+
+      #ui {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        width: 232px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+        backdrop-filter: blur(8px);
+      }
+      #ui h1 { margin: 0 0 2px; font-size: 15px; letter-spacing: 0.01em; }
+      #ui p.sub { margin: 0 0 14px; font-size: 12px; opacity: 0.6; }
+      .field { margin-bottom: 14px; }
+      .field > label { display: block; margin-bottom: 6px; font-size: 12px; opacity: 0.75; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+      .swatch {
+        width: 30px; height: 30px; padding: 0;
+        border: 2px solid transparent; border-radius: 8px;
+        /* contorno interior: sin él, los colores oscuros se pierden en el panel */
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+        cursor: pointer;
+      }
+      .swatch[aria-pressed="true"] { border-color: #fff; }
+      input[type="range"] { width: 100%; }
+      #hint { position: fixed; bottom: 14px; left: 16px; font-size: 12px; opacity: 0.45; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <aside id="ui">
+      <h1>Tunea Tu Combi</h1>
+      <p class="sub">Proyecto final &middot; Computacion Grafica</p>
+
+      <div class="field">
+        <label>Color de carroceria</label>
+        <div class="swatches" id="body-colors"></div>
+      </div>
+
+      <div class="field">
+        <label>Color de franja</label>
+        <div class="swatches" id="stripe-colors"></div>
+      </div>
+
+      <div class="field">
+        <label for="metalness">Acabado metalico</label>
+        <input id="metalness" type="range" min="0" max="1" step="0.01" value="0.35" />
+      </div>
+    </aside>
+
+    <p id="hint">Arrastra para orbitar &middot; rueda para zoom</p>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+# dependencias
+node_modules/
+
+# salida de build
+dist/
+.vite/
+
+# assets fuente pesados de DCC (exportar a glTF en assets/ en su lugar)
+*.blend1
+*.blend2
+
+# entorno / editores
+.env
+.env.local
+.DS_Store
+Thumbs.db

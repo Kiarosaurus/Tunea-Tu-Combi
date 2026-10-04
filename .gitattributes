@@ -1,0 +1,13 @@
+# Normaliza saltos de linea: el equipo trabaja en Windows y los diffs con CRLF
+# ensucian los merges.
+* text=auto eol=lf
+
+# Binarios: nunca normalizar
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.glb binary
+*.gltf binary
+*.hdr binary
+*.mp4 binary
+*.blend binary
