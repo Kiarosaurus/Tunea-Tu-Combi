@@ -29,4 +29,12 @@ describe('driveForceN', () => {
     expect(driveForceN(moving, { throttle: 0, braking: true })).toBeLessThan(
       driveForceN(moving, { throttle: 0, braking: false }));
   });
+
+  it('usa el apoyo de la suspensión aunque no haya contacto rígido', () => {
+    const world = createLevelOneWorld({ reinforcedSuspension: true });
+    for (let index = 0; index < 120; index += 1) world.step(FIXED_STEP_SECONDS);
+    const snapshot = world.snapshot();
+    expect(snapshot.suspensionForces.length).toBeGreaterThan(0);
+    expect(driveForceN(snapshot, { throttle: 1, braking: false })).toBeGreaterThan(0);
+  });
 });

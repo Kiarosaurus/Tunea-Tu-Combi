@@ -50,19 +50,25 @@ function draw(
   world: WorldSnapshot,
 ): void {
   context.clearRect(0, 0, width, height);
-  drawSky(context, width, height);
+  drawSky(context, width, height, snapshot.selectedLevelId);
   drawHills(context, width, height);
-  drawCity(context, width, height);
+  drawCity(context, width, height, snapshot.selectedLevelId);
   drawTerrain(context, width, height, world);
   drawCombi(context, width, height, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
 }
 
-function drawSky(context: CanvasRenderingContext2D, width: number, height: number): void {
+function drawSky(context: CanvasRenderingContext2D, width: number, height: number,
+  levelId: string | null): void {
+  const colors = levelId === 'subida-al-cerro'
+    ? ['#17233a', '#70475d', '#efad67']
+    : levelId === 'dia-de-mercado'
+      ? ['#144450', '#397e78', '#f2ba67']
+      : ['#10283c', '#20506a', '#ef9d5c'];
   const gradient = context.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#10283c');
-  gradient.addColorStop(0.58, '#20506a');
-  gradient.addColorStop(1, '#ef9d5c');
+  gradient.addColorStop(0, colors[0] ?? '#10283c');
+  gradient.addColorStop(0.58, colors[1] ?? '#20506a');
+  gradient.addColorStop(1, colors[2] ?? '#ef9d5c');
   context.fillStyle = gradient;
   context.fillRect(0, 0, width, height);
 
@@ -87,7 +93,8 @@ function drawHills(context: CanvasRenderingContext2D, width: number, height: num
   context.fill();
 }
 
-function drawCity(context: CanvasRenderingContext2D, width: number, height: number): void {
+function drawCity(context: CanvasRenderingContext2D, width: number, height: number,
+  levelId: string | null): void {
   const buildingWidth = Math.max(42, width / 15);
   const colors = ['#d36d42', '#d9a449', '#b84d41', '#d0bd86', '#86524b'];
   for (let index = 0; index < 17; index += 1) {
@@ -99,6 +106,15 @@ function drawCity(context: CanvasRenderingContext2D, width: number, height: numb
     context.fillStyle = 'rgba(35, 47, 51, 0.45)';
     context.fillRect(x + 10, y + 14, 9, 12);
     context.fillRect(x + 29, y + 14, 9, 12);
+    if (levelId === 'dia-de-mercado' && index % 2 === 0) {
+      context.fillStyle = index % 4 === 0 ? '#f2c14e' : '#ef5b3f';
+      context.fillRect(x + 3, height * 0.69 - 9, buildingWidth - 10, 9);
+    }
+  }
+  if (levelId === 'subida-al-cerro') {
+    context.fillStyle = '#f2c14e';
+    context.font = 'bold 14px system-ui';
+    context.fillText('MIRADOR', width * 0.72, height * 0.46);
   }
 }
 

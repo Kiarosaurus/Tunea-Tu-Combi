@@ -4,6 +4,9 @@ export interface LevelDefinition {
   readonly name: string;
   readonly quota: number;
   readonly challenge: string;
+  readonly durationSeconds: number;
+  readonly finishX: number;
+  readonly seed: string;
 }
 
 export const LEVELS: readonly LevelDefinition[] = [
@@ -13,6 +16,7 @@ export const LEVELS: readonly LevelDefinition[] = [
     name: 'Primer recorrido',
     quota: 25,
     challenge: 'Pista plana y paraderos cercanos',
+    durationSeconds: 30, finishX: 31, seed: 'primer-recorrido-base',
   },
   {
     id: 'subida-al-cerro',
@@ -20,6 +24,7 @@ export const LEVELS: readonly LevelDefinition[] = [
     name: 'Subida al cerro',
     quota: 40,
     challenge: 'Pendiente larga y poco impulso',
+    durationSeconds: 30, finishX: 37, seed: 'subida-al-cerro-base',
   },
   {
     id: 'dia-de-mercado',
@@ -27,6 +32,7 @@ export const LEVELS: readonly LevelDefinition[] = [
     name: 'Día de mercado',
     quota: 55,
     challenge: 'Carga alta y equilibrio',
+    durationSeconds: 30, finishX: 37, seed: 'dia-de-mercado-base',
   },
   {
     id: 'pista-danada',
@@ -34,6 +40,7 @@ export const LEVELS: readonly LevelDefinition[] = [
     name: 'Pista dañada',
     quota: 70,
     challenge: 'Baches, rampa e impactos',
+    durationSeconds: 30, finishX: 40, seed: 'pista-danada-base',
   },
   {
     id: 'hora-punta',
@@ -41,5 +48,6 @@ export const LEVELS: readonly LevelDefinition[] = [
     name: 'Hora punta',
     quota: 90,
     challenge: 'Capacidad y decisiones rápidas',
+    durationSeconds: 30, finishX: 42, seed: 'hora-punta-base',
   },
 ];

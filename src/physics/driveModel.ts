@@ -28,7 +28,7 @@ export function driveForceN(
 ): number {
   const speed = world.body.velocity.x;
   const resistance = speed === 0 ? 0 : -speed * parameters.rollingResistanceNPerMps;
-  if (world.contacts.length === 0) return resistance;
+  if (world.contacts.length === 0 && world.suspensionForces.length === 0) return resistance;
 
   const desiredEngineForce = Math.abs(speed) >= parameters.maxSpeedMps &&
     Math.sign(speed) === input.throttle
@@ -37,8 +37,14 @@ export function driveForceN(
   const desiredBrakeForce = input.braking && Math.abs(speed) > 0.02
     ? -Math.sign(speed) * parameters.brakingForceN
     : 0;
-  const tractionLimit = parameters.tractionCoefficient * world.body.massKg *
-    Math.abs(world.gravity.y) * Math.max(...world.contacts.map((contact) => contact.normal.y));
+  const contactSupportN = world.contacts.length > 0
+    ? world.body.massKg * Math.abs(world.gravity.y) *
+      Math.max(...world.contacts.map((contact) => contact.normal.y))
+    : 0;
+  const suspensionSupportN = world.suspensionForces.reduce((total, spring) =>
+    total + spring.forceN, 0);
+  const tractionLimit = parameters.tractionCoefficient *
+    Math.max(contactSupportN, suspensionSupportN);
   const wheelForce = Math.max(-tractionLimit, Math.min(tractionLimit,
     desiredEngineForce + desiredBrakeForce));
   return wheelForce + resistance;

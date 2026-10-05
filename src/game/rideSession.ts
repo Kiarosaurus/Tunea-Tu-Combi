@@ -34,10 +34,15 @@ export class RideSession {
   #maximumPayloadMassKg = 0;
   #requests: RequestProgress[];
   readonly #seed: string;
+  readonly #finishX: number;
   #finished = false;
 
-  constructor(seed = 'primer-recorrido-base', requests = generateLevelOneRequests(seed)) {
+  constructor(seed = 'primer-recorrido-base', requests = generateLevelOneRequests(seed),
+    durationSeconds = RIDE_DURATION_SECONDS, finishX = LEVEL_ONE_FINISH_X) {
+    if (!(durationSeconds > 0) || !(finishX > 0)) throw new Error('El intento requiere duración y meta válidas.');
     this.#seed = seed;
+    this.#remainingSeconds = durationSeconds;
+    this.#finishX = finishX;
     this.#requests = requests.map((request) => ({ request, status: 'waiting' }));
   }
 
@@ -64,7 +69,7 @@ export class RideSession {
         ? { ...progress, status: 'missed' }
         : progress,
     );
-    if (this.#remainingSeconds === 0 || vehicleX >= LEVEL_ONE_FINISH_X) this.#finished = true;
+    if (this.#remainingSeconds === 0 || vehicleX >= this.#finishX) this.#finished = true;
   }
 
   collect(requestId: string, vehicleX: number, capacity: VehicleCapacity): void {

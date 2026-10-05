@@ -130,7 +130,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   grid.className = 'level-grid';
   for (const level of LEVELS) {
     const isUnlocked = level.number <= snapshot.game.unlockedLevel;
-    const isPlayable = level.number === 1;
+    const isPlayable = level.number <= 3;
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'level-card';
@@ -141,7 +141,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
       textElement('strong', 'level-name', level.name),
       textElement('span', 'level-challenge', level.challenge),
       textElement('span', 'level-quota', `Cuota S/ ${level.quota}`),
-      textElement('span', 'level-status', isPlayable ? 'Disponible' : isUnlocked ? 'Desbloqueado, próximamente' : 'Bloqueado'),
+      textElement('span', 'level-status', isPlayable && isUnlocked ? 'Disponible' : isUnlocked ? 'Desbloqueado, próximamente' : 'Bloqueado'),
     );
     if (isPlayable) card.addEventListener('click', () =>
       dispatch({ type: 'SELECT_LEVEL', levelId: level.id }));
@@ -159,7 +159,9 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     textElement('p', 'eyebrow', level?.name ?? 'Taller'),
     textElement('h1', 'section-title', 'Taller de la combi'),
     textElement('p', 'workshop-intro',
-      'El kit básico ya está montado. Compra un asiento de pasajero y colócalo para poder cobrar pasajes.'),
+      level?.number === 3
+        ? 'Equipa asiento, parrilla y portacarga para atender todas las solicitudes del mercado.'
+        : 'El kit básico ya está montado. Equilibra capacidad y masa para alcanzar la cuota.'),
   );
 
   const summary = document.createElement('dl');
@@ -182,18 +184,14 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     row.className = 'shop-row';
     row.append(textElement('span', '',
       `${part.name} - S/ ${part.price} - ${part.massKg} kg - tienes ${snapshot.game.ownedParts[part.kind]}`));
-    if (part.kind === 'wheel' || part.kind === 'engine' || part.kind === 'seat') {
-      row.append(actionButton(`Comprar ${part.name}`, 'small-action', () =>
-        dispatch({ type: 'BUY_PART', kind: part.kind })));
-      if (snapshot.game.pendingPurchases[part.kind] > 0) {
-        row.append(actionButton(`Devolver ${part.name}`, 'small-action secondary-action', () =>
-          dispatch({ type: 'RETURN_PURCHASE', kind: part.kind })));
-      } else if (snapshot.game.ownedParts[part.kind] > basicInventory[part.kind]) {
-        row.append(actionButton(`Vender ${part.name}`, 'small-action secondary-action', () =>
-          dispatch({ type: 'SELL_PART', kind: part.kind })));
-      }
-    } else {
-      row.append(textElement('span', 'future-label', 'Próxima etapa'));
+    row.append(actionButton(`Comprar ${part.name}`, 'small-action', () =>
+      dispatch({ type: 'BUY_PART', kind: part.kind })));
+    if (snapshot.game.pendingPurchases[part.kind] > 0) {
+      row.append(actionButton(`Devolver ${part.name}`, 'small-action secondary-action', () =>
+        dispatch({ type: 'RETURN_PURCHASE', kind: part.kind })));
+    } else if (snapshot.game.ownedParts[part.kind] > basicInventory[part.kind]) {
+      row.append(actionButton(`Vender ${part.name}`, 'small-action secondary-action', () =>
+        dispatch({ type: 'SELL_PART', kind: part.kind })));
     }
     shop.append(row);
   }
@@ -211,7 +209,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     if (placed) {
       row.append(actionButton(`Retirar ${ANCHOR_NAMES[anchor]}`, 'small-action secondary-action', () =>
         dispatch({ type: 'REMOVE_PART', anchor })));
-    } else if (kind === 'wheel' || kind === 'engine' || kind === 'seat') {
+    } else {
       const button = actionButton(`Colocar ${ANCHOR_NAMES[anchor]}`, 'small-action', () =>
         dispatch({ type: 'PLACE_PART', kind, anchor }));
       const placedCount = Object.values(snapshot.game.workshopBuild).filter((item) => item === kind).length;
@@ -227,9 +225,10 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
 }
 
 function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   const panel = panelElement('playing-panel');
   panel.append(
-    textElement('p', 'eyebrow', 'Primer recorrido'),
+    textElement('p', 'eyebrow', level?.name ?? 'Recorrido'),
     textElement('h1', 'playing-title', 'En ruta'),
   );
   const hud = document.createElement('div');
@@ -266,7 +265,8 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   if (!ride) return;
   setUiText(screen, 'time', `${Math.ceil(ride.remainingSeconds)} s`);
   setUiText(screen, 'revenue', `S/ ${ride.deliveredRevenue}`);
-  setUiText(screen, 'quota', 'S/ 25');
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
+  setUiText(screen, 'quota', `S/ ${level?.quota ?? 0}`);
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
   setUiText(screen, 'capacity', `${ride.requests.filter((item) => item.status === 'onboard')
@@ -307,6 +307,7 @@ function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement 
 }
 
 function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   const panel = panelElement('results-panel');
   panel.append(
     textElement('p', 'eyebrow', 'Resultado del turno'),
@@ -317,7 +318,7 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   summary.className = 'workshop-summary';
   summary.append(
     definitionItem('Entregado', `S/ ${snapshot.ride?.deliveredRevenue ?? 0}`),
-    definitionItem('Cuota', 'S/ 25'),
+    definitionItem('Cuota', `S/ ${level?.quota ?? 0}`),
     definitionItem('Solicitudes', String(snapshot.ride?.deliveredCount ?? 0)),
     definitionItem('Masa máxima', `${snapshot.ride?.maximumPayloadMassKg ?? 0} kg`),
   );

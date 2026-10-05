@@ -7,7 +7,7 @@ el curso de Computación Gráfica de UTEC. El producto usa Canvas 2D y genera un
 La versión actual incluye TypeScript estricto, una máquina de estados explícita,
 un núcleo físico propio, taller modular y un primer recorrido jugable de
 30 segundos. Los cinco niveles y siete tipos de piezas están definidos como
-datos; solo el primer nivel está disponible para jugar en esta etapa.
+datos; los tres primeros niveles están disponibles y se desbloquean en orden.
 
 ## Requisitos
 
@@ -98,7 +98,7 @@ La máquina de estados declara el flujo completo previsto:
 BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 ```
 
-La interfaz recorre todos esos estados para el primer nivel. El jugador empieza
+La interfaz recorre todos esos estados para los tres primeros niveles. El jugador empieza
 con chasis, dos ruedas, motor y asiento del conductor. Para transportar un
 pasajero debe comprar y colocar un segundo asiento en el taller. Las compras
 recientes pueden devolverse por su precio completo antes del recorrido; una
@@ -112,6 +112,11 @@ incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su
 unión. La cuota del primer recorrido es S/ 25. Solo el dinero entregado al destino se
 acredita al ganar; fallar conserva inventario y progreso previo.
+
+La subida al cerro introduce una pendiente prolongada y tres entregas. El día
+de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,
+carga alta y scooter sobre terreno ondulado. Cada recorrido conserva su propia
+cuota, meta, semilla y apariencia provisional.
 
 El guardado local usa la clave `tunea-tu-combi:save:v1`. Se valida antes de
 cargar; si está corrupto, se conserva su texto original en memoria durante la

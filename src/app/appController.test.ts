@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LocalSaveRepository, type StorageLike } from '../persistence/saveRepository';
+import { createSaveData } from '../persistence/saveRepository';
+import { createInitialGameModel } from '../game/model';
 import { AppController } from './appController';
 
 function memoryStorage(): StorageLike {
@@ -15,6 +17,24 @@ function enterWorkshop(controller: AppController): void {
   controller.dispatch({ type: 'BOOT_COMPLETED' });
   controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
   controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'primer-recorrido' });
+}
+
+function completeRide(controller: AppController): void {
+  controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+  for (let index = 0; index < 1900 && controller.snapshot.state === 'PLAYING'; index += 1) {
+    controller.update(1 / 60);
+    const snapshot = controller.snapshot;
+    for (const progress of snapshot.ride?.requests ?? []) {
+      if (progress.status === 'waiting' &&
+        Math.abs(snapshot.vehicleX - progress.request.originX) < 1.8) {
+        controller.dispatch({ type: 'COLLECT_REQUEST', requestId: progress.request.id });
+      }
+      if (progress.status === 'onboard' &&
+        Math.abs(snapshot.vehicleX - progress.request.destinationX) < 1.8) {
+        controller.dispatch({ type: 'DELIVER_REQUEST' });
+      }
+    }
+  }
 }
 
 describe('flujo vertical del primer recorrido', () => {
@@ -93,6 +113,51 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     expect(controller.worldSnapshot.body.massKg).toBe(728);
     expect(controller.worldSnapshot.joints[0]).toMatchObject({ id: 'roofRack', broken: false });
+  });
+
+  it('completa la subida al cerro y desbloquea el nivel 3', () => {
+    const storage = memoryStorage();
+    const model = createInitialGameModel();
+    new LocalSaveRepository(storage).save(createSaveData({
+      ...model,
+      unlockedLevel: 2,
+      ownedParts: { ...model.ownedParts, seat: 2 },
+      workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat' },
+    }, false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'subida-al-cerro' });
+    controller.dispatch({ type: 'START_RIDE' });
+    completeRide(controller);
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(40);
+    expect(controller.snapshot.won).toBe(true);
+    expect(controller.snapshot.game.unlockedLevel).toBe(3);
+  });
+
+  it('completa el día de mercado con carga alta y desbloquea el nivel 4', () => {
+    const storage = memoryStorage();
+    const model = createInitialGameModel();
+    new LocalSaveRepository(storage).save(createSaveData({
+      ...model,
+      unlockedLevel: 3,
+      ownedParts: { ...model.ownedParts, seat: 2, roofRack: 1, rearCarrier: 1, suspension: 1 },
+      workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat', roof: 'roofRack',
+        rearCarrier: 'rearCarrier', suspension: 'suspension' },
+    }, false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'dia-de-mercado' });
+    controller.dispatch({ type: 'START_RIDE' });
+    completeRide(controller);
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.vehicleX).toBeGreaterThan(4);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(55);
+    expect(controller.snapshot.won).toBe(true);
+    expect(controller.snapshot.game.unlockedLevel).toBe(4);
+    expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(30);
   });
 
   it('bloquea una construcción sin rueda y recupera un guardado inválido', () => {

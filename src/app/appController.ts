@@ -14,8 +14,9 @@ import {
   type GameModel,
 } from '../game/model';
 import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } from '../game/rideSession';
+import { generateRequests } from '../game/requests';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
-import { createDemoWorld, createLevelOneWorld } from '../physics/demoWorld';
+import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN } from '../physics/driveModel';
 import type { PhysicsWorld, WorldSnapshot } from '../physics/world';
 import { AppStateMachine, type AppState } from './appState';
@@ -252,15 +253,17 @@ export class AppController {
 
   #startRide(): void {
     if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller antes de iniciar.');
-    if (this.#selectedLevelId !== 'primer-recorrido') throw new Error('Este recorrido estará disponible en una siguiente etapa.');
+    const level = LEVELS.find((candidate) => candidate.id === this.#selectedLevelId);
+    if (!level || level.number > 3) throw new Error('Este recorrido estará disponible en una siguiente etapa.');
     const issue = validateBuild(this.#model.workshopBuild);
     if (issue) throw new Error(issue);
-    this.#world = createLevelOneWorld({
+    this.#world = createRideWorld(level.id, {
       reinforcedSuspension: this.#model.workshopBuild.suspension === 'suspension',
       roofRack: this.#model.workshopBuild.roof === 'roofRack',
       rearCarrier: this.#model.workshopBuild.rearCarrier === 'rearCarrier',
     });
-    this.#ride = new RideSession();
+    this.#ride = new RideSession(level.seed, generateRequests(level.id, level.seed),
+      level.durationSeconds, level.finishX);
     this.#throttle = 0;
     this.#braking = false;
     this.#won = null;

@@ -40,16 +40,14 @@ export interface LevelOneEquipment {
 }
 
 export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsWorld {
-  const terrain: readonly TerrainSegment[] = [
-    { start: { x: -2, y: 0 }, end: { x: 12, y: 0 } },
-    { start: { x: 12, y: 0 }, end: { x: 16, y: 0.25 } },
-    { start: { x: 16, y: 0.25 }, end: { x: 22, y: 0.25 } },
-    { start: { x: 22, y: 0.25 }, end: { x: 26, y: 0 } },
-    { start: { x: 26, y: 0 }, end: { x: 35, y: 0 } },
-  ];
+  return createRideWorld('primer-recorrido', equipment);
+}
+
+export function createRideWorld(levelId: string, equipment: LevelOneEquipment = {}): PhysicsWorld {
+  const terrain = terrainForLevel(levelId);
   const body: RigidBody = {
-    id: 'level-one-combi',
-    position: { x: 2, y: 2 },
+    id: `${levelId}-combi`,
+    position: { x: 2, y: 2.5 },
     angleRadians: 0,
     velocity: { x: 0, y: 0 },
     angularVelocity: 0,
@@ -71,6 +69,30 @@ export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsW
   if (equipment.rearCarrier) joints.push({ id: 'rearCarrier', offset: { x: -1.7, y: 0 },
     massKg: partMass('rearCarrier'), breakImpulseNs: threshold });
   return new PhysicsWorld(body, terrain, joints);
+}
+
+function terrainForLevel(levelId: string): readonly TerrainSegment[] {
+  if (levelId === 'primer-recorrido') return [
+    { start: { x: -2, y: 0 }, end: { x: 12, y: 0 } },
+    { start: { x: 12, y: 0 }, end: { x: 16, y: 0.25 } },
+    { start: { x: 16, y: 0.25 }, end: { x: 22, y: 0.25 } },
+    { start: { x: 22, y: 0.25 }, end: { x: 26, y: 0 } },
+    { start: { x: 26, y: 0 }, end: { x: 35, y: 0 } },
+  ];
+  if (levelId === 'subida-al-cerro') return [
+    { start: { x: -2, y: 0 }, end: { x: 8, y: 0 } },
+    { start: { x: 8, y: 0 }, end: { x: 20, y: 3.2 } },
+    { start: { x: 20, y: 3.2 }, end: { x: 28, y: 5.2 } },
+    { start: { x: 28, y: 5.2 }, end: { x: 40, y: 5.2 } },
+  ];
+  if (levelId === 'dia-de-mercado') return [
+    { start: { x: -2, y: 0 }, end: { x: 9, y: 0 } },
+    { start: { x: 9, y: 0 }, end: { x: 14, y: 0.7 } },
+    { start: { x: 14, y: 0.7 }, end: { x: 20, y: 0.1 } },
+    { start: { x: 20, y: 0.1 }, end: { x: 27, y: 0.9 } },
+    { start: { x: 27, y: 0.9 }, end: { x: 40, y: 0 } },
+  ];
+  throw new Error(`No hay terreno jugable para ${levelId}.`);
 }
 
 function partMass(kind: 'roofRack' | 'rearCarrier'): number {

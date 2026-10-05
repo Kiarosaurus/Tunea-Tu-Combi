@@ -18,8 +18,25 @@ const PEOPLE_VARIANTS = ['azul', 'rojo', 'verde', 'amarillo'] as const;
 const CARGO_VARIANTS = ['cajas', 'canastas', 'sacos'] as const;
 
 export function generateLevelOneRequests(seed: string): readonly RideRequest[] {
+  return generateRequests('primer-recorrido', seed);
+}
+
+export function generateRequests(levelId: string, seed: string): readonly RideRequest[] {
   if (!seed.trim()) throw new Error('La semilla de solicitudes no puede estar vacía.');
   const random = seededRandom(seed);
+  if (levelId === 'subida-al-cerro') return [
+    passengerRequest('cerro-uno', 'Entrada', 'Mirador', 4, 13, 12, 6, random),
+    passengerRequest('cerro-dos', 'Mirador', 'Curva alta', 16, 25, 14, 7, random),
+    passengerRequest('cerro-tres', 'Curva alta', 'Cumbre', 27, 34, 14, 7, random),
+  ];
+  if (levelId === 'dia-de-mercado') return [
+    passengerRequest('mercado-persona', 'Barrio', 'Mercado', 4, 12, 12, 6, random),
+    cargoRequestForRoute('mercado-techo', 'Mercado', 'Mayorista', 14, 24,
+      'roofCargo', 18, 9, random),
+    cargoRequestForRoute('mercado-scooter', 'Mayorista', 'Terminal', 26, 34,
+      'scooter', 18, 9, random),
+  ];
+  if (levelId !== 'primer-recorrido') throw new Error(`No hay solicitudes para ${levelId}.`);
   return [
     passengerRequest('primer-pasajero', 'Inicio', 'Centro', 5, 12, 10, 5, random),
     passengerRequest('segundo-pasajero', 'Centro', 'Mercado', 15, 22, 10, 5, random),
@@ -54,17 +71,28 @@ function passengerRequest(
 
 function cargoRequest(random: () => number): RideRequest {
   const kind: RequestKind = random() < 0.5 ? 'roofCargo' : 'scooter';
+  return cargoRequestForRoute('carga-terminal', 'Mercado', 'Terminal', 24, 29,
+    kind, 12, 8, random);
+}
+
+function cargoRequestForRoute(
+  id: string,
+  originStop: string,
+  destinationStop: string,
+  originX: number,
+  destinationX: number,
+  kind: Exclude<RequestKind, 'passenger'>,
+  baseFare: number,
+  distanceFare: number,
+  random: () => number,
+): RideRequest {
   return {
-    id: 'carga-terminal',
-    originStop: 'Mercado',
-    destinationStop: 'Terminal',
-    originX: 24,
-    destinationX: 29,
+    id, originStop, destinationStop, originX, destinationX,
     kind,
     massKg: 32 + Math.floor(random() * 29),
     requiredCapacity: 1,
-    baseFare: 12,
-    distanceFare: 8,
+    baseFare,
+    distanceFare,
     visualVariant: pick(CARGO_VARIANTS, random),
   };
 }

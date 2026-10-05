@@ -92,3 +92,61 @@ test('recupera un guardado corrupto sin bloquear el menú', async ({ page }) => 
   await expect(page.getByRole('status')).toContainText('Guardado inválido recuperado');
   await expect(page.getByRole('button', { name: 'Empezar recorrido' })).toBeEnabled();
 });
+
+test('desbloquea y completa los recorridos de cerro y mercado', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto(artifactUrl);
+  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
+  await page.getByRole('button', { name: /Primer recorrido/ }).click();
+  await page.getByRole('button', { name: 'Comprar Asiento' }).click();
+  await page.getByRole('button', { name: 'Colocar Asiento de pasajero' }).click();
+  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await completeRoute(page, [
+    ['Bajar en Centro', 'S/ 15'],
+    ['Bajar en Mercado', 'S/ 30'],
+  ]);
+
+  await page.getByRole('button', { name: 'Elegir nivel' }).click();
+  await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Subida al cerro/ }).click();
+  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await completeRoute(page, [
+    ['Bajar en Mirador', 'S/ 18'],
+    ['Bajar en Curva alta', 'S/ 39'],
+    ['Bajar en Cumbre', 'S/ 60'],
+  ]);
+
+  await page.getByRole('button', { name: 'Elegir nivel' }).click();
+  await expect(page.getByRole('button', { name: /Día de mercado/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Día de mercado/ }).click();
+  for (const [buy, place] of [
+    ['Comprar Parrilla de techo', 'Colocar Parrilla de techo'],
+    ['Comprar Portacarga posterior', 'Colocar Portacarga posterior'],
+    ['Comprar Suspensión reforzada', 'Colocar Suspensión'],
+  ] as const) {
+    await page.getByRole('button', { name: buy }).click();
+    await page.getByRole('button', { name: place }).click();
+  }
+  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await completeRoute(page, [
+    ['Bajar en Mercado', 'S/ 18'],
+    ['Entregar carga en Mayorista', 'S/ 45'],
+    ['Entregar carga en Terminal', 'S/ 72'],
+  ]);
+  await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
+  await expect(page.getByText('Masa máxima').locator('..')).toContainText('kg');
+});
+
+async function completeRoute(page: Page, deliveries: readonly (readonly [string, string])[]): Promise<void> {
+  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
+  const delivery = page.locator('[data-ui="deliver"]');
+  const revenue = page.locator('[data-ui="revenue"]');
+  await page.keyboard.down('d');
+  for (const [deliveryLabel, expectedRevenue] of deliveries) {
+    await interactUntil(page, delivery, deliveryLabel);
+    await interactUntil(page, revenue, expectedRevenue);
+  }
+  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
+  await page.keyboard.up('d');
+  await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
+}

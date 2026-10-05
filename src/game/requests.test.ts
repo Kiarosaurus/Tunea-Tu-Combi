@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateLevelOneRequests, requestFare } from './requests';
+import { generateLevelOneRequests, generateRequests, requestFare } from './requests';
 
 describe('generación de solicitudes', () => {
   it('repite exactamente la secuencia para una misma semilla', () => {
@@ -28,5 +28,14 @@ describe('generación de solicitudes', () => {
 
   it('rechaza semillas vacías', () => {
     expect(() => generateLevelOneRequests('  ')).toThrow('semilla');
+  });
+
+  it('genera retos distintos para cerro y mercado', () => {
+    const hill = generateRequests('subida-al-cerro', 'cerro-base');
+    const market = generateRequests('dia-de-mercado', 'mercado-base');
+    expect(hill.every((request) => request.kind === 'passenger')).toBe(true);
+    expect(market.map((request) => request.kind)).toEqual(['passenger', 'roofCargo', 'scooter']);
+    expect(hill.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(40);
+    expect(market.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(55);
   });
 });
