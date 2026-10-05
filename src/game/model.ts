@@ -39,6 +39,20 @@ export interface VehicleCapacity {
   readonly scooter: number;
 }
 
+export interface BuildStats {
+  readonly massKg: number;
+  readonly bodyMassKg: number;
+  readonly centerOfMass: { readonly x: number; readonly y: number };
+  readonly engineForceN: number;
+}
+
+const ANCHOR_POSITIONS: Readonly<Record<AnchorId, { readonly x: number; readonly y: number }>> = {
+  frontWheel: { x: 1.05, y: -0.55 }, rearWheel: { x: -1.05, y: -0.55 },
+  engine: { x: 0.65, y: 0 }, driverSeat: { x: -0.3, y: 0.2 },
+  passengerSeat: { x: 0.4, y: 0.2 }, roof: { x: 0, y: 0.9 },
+  rearCarrier: { x: -1.7, y: 0 }, suspension: { x: 0, y: -0.3 },
+};
+
 export function emptyInventory(): Inventory {
   return {
     chassis: 0,
@@ -63,6 +77,22 @@ export function createInitialGameModel(): GameModel {
       driverSeat: 'seat',
     },
     unlockedLevel: 1,
+    completedLevels: {},
+  };
+}
+
+export function createDemoGameModel(): GameModel {
+  return {
+    wallet: 500,
+    ownedParts: { chassis: 1, wheel: 2, engine: 1, seat: 2,
+      roofRack: 1, rearCarrier: 1, suspension: 1 },
+    pendingPurchases: emptyInventory(),
+    workshopBuild: {
+      frontWheel: 'wheel', rearWheel: 'wheel', engine: 'engine',
+      driverSeat: 'seat', passengerSeat: 'seat', roof: 'roofRack',
+      rearCarrier: 'rearCarrier', suspension: 'suspension',
+    },
+    unlockedLevel: 5,
     completedLevels: {},
   };
 }
@@ -93,6 +123,16 @@ export function removePart(model: GameModel, anchor: AnchorId): GameModel {
     Object.entries(model.workshopBuild).filter(([placedAnchor]) => placedAnchor !== anchor),
   ) as SerializedBuild;
   return { ...model, workshopBuild };
+}
+
+export function clearOptionalParts(model: GameModel): GameModel {
+  const requiredAnchors: readonly AnchorId[] = ['frontWheel', 'rearWheel', 'engine', 'driverSeat'];
+  const workshopBuild = Object.fromEntries(Object.entries(model.workshopBuild)
+    .filter(([anchor]) => requiredAnchors.includes(anchor as AnchorId))) as SerializedBuild;
+  return {
+    ...model,
+    workshopBuild,
+  };
 }
 
 export function returnPurchase(model: GameModel, kind: PartKind): GameModel {
@@ -136,6 +176,31 @@ export function vehicleCapacity(build: SerializedBuild): VehicleCapacity {
     passenger: build.passengerSeat === 'seat' ? 1 : 0,
     roofCargo: build.roof === 'roofRack' ? 1 : 0,
     scooter: build.rearCarrier === 'rearCarrier' ? 1 : 0,
+  };
+}
+
+export function buildStats(build: SerializedBuild): BuildStats {
+  const chassis = PART_CATALOG.find((part) => part.kind === 'chassis');
+  if (!chassis) throw new Error('Falta la definición del chasis.');
+  let massKg = chassis.massKg;
+  let bodyMassKg = chassis.massKg;
+  let weightedX = 0;
+  let weightedY = 0;
+  for (const [anchorName, kind] of Object.entries(build)) {
+    const anchor = anchorName as AnchorId;
+    const part = PART_CATALOG.find((candidate) => candidate.kind === kind);
+    if (!part) continue;
+    const position = ANCHOR_POSITIONS[anchor];
+    massKg += part.massKg;
+    if (anchor !== 'roof' && anchor !== 'rearCarrier') bodyMassKg += part.massKg;
+    weightedX += part.massKg * position.x;
+    weightedY += part.massKg * position.y;
+  }
+  return {
+    massKg,
+    bodyMassKg,
+    centerOfMass: { x: weightedX / massKg, y: weightedY / massKg },
+    engineForceN: build.engine === 'engine' ? 2200 : 0,
   };
 }
 

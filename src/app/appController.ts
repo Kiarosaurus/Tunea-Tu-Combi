@@ -2,6 +2,9 @@ import { LEVELS } from '../data/levels';
 import type { PartKind } from '../data/parts';
 import {
   buyPart,
+  buildStats,
+  clearOptionalParts,
+  createDemoGameModel,
   createInitialGameModel,
   emptyInventory,
   vehicleCapacity,
@@ -30,6 +33,7 @@ export type AppAction =
   | { readonly type: 'REMOVE_PART'; readonly anchor: AnchorId }
   | { readonly type: 'RETURN_PURCHASE'; readonly kind: PartKind }
   | { readonly type: 'SELL_PART'; readonly kind: PartKind }
+  | { readonly type: 'CLEAR_OPTIONAL_PARTS' }
   | { readonly type: 'START_RIDE' }
   | { readonly type: 'SET_THROTTLE'; readonly value: -1 | 0 | 1 }
   | { readonly type: 'SET_BRAKE'; readonly value: boolean }
@@ -40,6 +44,9 @@ export type AppAction =
   | { readonly type: 'RETRY' }
   | { readonly type: 'ABORT_RIDE' }
   | { readonly type: 'RESET_PROGRESS' }
+  | { readonly type: 'LOAD_DEMO_PROFILE' }
+  | { readonly type: 'TOGGLE_REDUCED_MOTION' }
+  | { readonly type: 'RESTART_RIDE' }
   | { readonly type: 'TOGGLE_DEBUG' }
   | { readonly type: 'BACK' };
 
@@ -47,6 +54,7 @@ export interface AppSnapshot {
   readonly state: AppState;
   readonly selectedLevelId: string | null;
   readonly debugEnabled: boolean;
+  readonly reducedMotion: boolean;
   readonly game: GameModel;
   readonly ride: RideSnapshot | null;
   readonly vehicleX: number;
@@ -65,6 +73,7 @@ export class AppController {
   #ride: RideSession | null = null;
   #selectedLevelId: string | null = null;
   #debugEnabled = false;
+  #reducedMotion = false;
   #throttle: -1 | 0 | 1 = 0;
   #braking = false;
   #message = '';
@@ -83,6 +92,7 @@ export class AppController {
       completedLevels: saved.completedLevels,
     } : createInitialGameModel();
     this.#debugEnabled = saved?.settings.debugEnabled ?? false;
+    this.#reducedMotion = saved?.settings.reducedMotion ?? false;
     if (repository.recovered) this.#message = 'Guardado inválido recuperado. Se inició una partida segura.';
     this.#machine.subscribe(() => this.#notify());
   }
@@ -93,6 +103,7 @@ export class AppController {
       state: this.#machine.state,
       selectedLevelId: this.#selectedLevelId,
       debugEnabled: this.#debugEnabled,
+      reducedMotion: this.#reducedMotion,
       game: this.#model,
       ride: this.#ride?.snapshot ?? null,
       vehicleX: world.body.position.x,
@@ -129,7 +140,9 @@ export class AppController {
         for (const requestId of this.#world.snapshot().lostPayloadIds) {
           if (this.#ride.lose(requestId)) this.#message = 'Una carga se desprendió por el impacto.';
         }
-        this.#ride.advance(durationSeconds, this.#world.snapshot().body.position.x);
+        const world = this.#world.snapshot();
+        this.#ride.advance(durationSeconds, world.body.position.x, world.body.angleRadians,
+          world.joints.filter((joint) => joint.broken).length);
       } catch {
         this.#message = 'La simulación se detuvo para proteger la partida.';
         this.#machine.transition('RESULTS');
@@ -183,6 +196,9 @@ export class AppController {
       case 'SELL_PART':
         this.#mutateModel(sellPart(this.#model, action.kind));
         return;
+      case 'CLEAR_OPTIONAL_PARTS':
+        this.#mutateModel(clearOptionalParts(this.#model));
+        return;
       case 'START_RIDE':
         this.#startRide();
         return;
@@ -223,6 +239,17 @@ export class AppController {
       case 'RESET_PROGRESS':
         this.#resetProgress();
         return;
+      case 'LOAD_DEMO_PROFILE':
+        this.#loadDemoProfile();
+        return;
+      case 'TOGGLE_REDUCED_MOTION':
+        this.#reducedMotion = !this.#reducedMotion;
+        this.#save();
+        this.#notify();
+        return;
+      case 'RESTART_RIDE':
+        this.#restartRide();
+        return;
       case 'TOGGLE_DEBUG':
         this.#debugEnabled = !this.#debugEnabled;
         this.#save();
@@ -257,10 +284,22 @@ export class AppController {
     if (!level) throw new Error('Este recorrido no está disponible.');
     const issue = validateBuild(this.#model.workshopBuild);
     if (issue) throw new Error(issue);
+    this.#createRide(level.id);
+    this.#model = { ...this.#model, pendingPurchases: emptyInventory() };
+    this.#save();
+    this.#machine.transition('PLAYING');
+  }
+
+  #createRide(levelId: string): void {
+    const level = LEVELS.find((candidate) => candidate.id === levelId);
+    if (!level) throw new Error('Este recorrido no está disponible.');
+    const stats = buildStats(this.#model.workshopBuild);
     this.#world = createRideWorld(level.id, {
       reinforcedSuspension: this.#model.workshopBuild.suspension === 'suspension',
       roofRack: this.#model.workshopBuild.roof === 'roofRack',
       rearCarrier: this.#model.workshopBuild.rearCarrier === 'rearCarrier',
+      bodyMassKg: stats.bodyMassKg,
+      centerOfMass: stats.centerOfMass,
     });
     this.#ride = new RideSession(level.seed, generateRequests(level.id, level.seed),
       level.durationSeconds, level.finishX);
@@ -268,9 +307,16 @@ export class AppController {
     this.#braking = false;
     this.#won = null;
     this.#message = '';
-    this.#model = { ...this.#model, pendingPurchases: emptyInventory() };
-    this.#save();
-    this.#machine.transition('PLAYING');
+  }
+
+  #restartRide(): void {
+    if ((this.#machine.state !== 'PLAYING' && this.#machine.state !== 'PAUSED') || !this.#selectedLevelId) {
+      throw new Error('No hay un intento para reiniciar.');
+    }
+    this.#createRide(this.#selectedLevelId);
+    this.#message = 'Intento reiniciado.';
+    if (this.#machine.state === 'PAUSED') this.#machine.transition('PLAYING');
+    else this.#notify();
   }
 
   #collect(requestId: string): void {
@@ -278,8 +324,11 @@ export class AppController {
     const request = this.#ride.snapshot.requests.find((item) => item.request.id === requestId)?.request;
     this.#ride.collect(requestId, this.#world.snapshot().body.position.x,
       vehicleCapacity(this.#model.workshopBuild));
-    if (request) this.#world.attachPayload(request.id, request.massKg,
-      payloadOffset(request.kind), payloadJoint(request.kind));
+    if (request) {
+      const centerOfMass = buildStats(this.#model.workshopBuild).centerOfMass;
+      this.#world.attachPayload(request.id, request.massKg,
+        payloadOffset(request.kind, centerOfMass), payloadJoint(request.kind));
+    }
     this.#message = request?.kind === 'passenger'
       ? 'Pasajero a bordo. Llévalo a su destino.'
       : 'Carga asegurada. Llévala a su destino.';
@@ -316,7 +365,19 @@ export class AppController {
     this.#ride = null;
     this.#world = createDemoWorld();
     this.#debugEnabled = false;
+    this.#reducedMotion = false;
     this.#message = 'Progreso borrado. Partida nueva lista.';
+    this.#notify();
+  }
+
+  #loadDemoProfile(): void {
+    if (this.#machine.state !== 'MENU') throw new Error('Vuelve al menú para cargar la demostración.');
+    this.#model = createDemoGameModel();
+    this.#selectedLevelId = null;
+    this.#ride = null;
+    this.#world = createDemoWorld();
+    this.#message = 'Perfil de demostración cargado: campaña y piezas disponibles.';
+    this.#save();
     this.#notify();
   }
 
@@ -338,7 +399,11 @@ export class AppController {
 
   #save(): void {
     try {
-      this.#repository.save(createSaveData(this.#model, this.#debugEnabled));
+      const save = createSaveData(this.#model, this.#debugEnabled);
+      this.#repository.save({ ...save, settings: {
+        ...save.settings,
+        reducedMotion: this.#reducedMotion,
+      } });
     } catch {
       this.#message = 'No se pudo guardar en este navegador. Revisa el almacenamiento local.';
     }
@@ -349,11 +414,12 @@ export class AppController {
   }
 }
 
-function payloadOffset(kind: 'passenger' | 'roofCargo' | 'scooter'):
+function payloadOffset(kind: 'passenger' | 'roofCargo' | 'scooter',
+  centerOfMass: { readonly x: number; readonly y: number }):
 { readonly x: number; readonly y: number } {
-  if (kind === 'roofCargo') return { x: 0, y: 0.75 };
-  if (kind === 'scooter') return { x: -1.7, y: 0 };
-  return { x: 0, y: 0 };
+  if (kind === 'roofCargo') return { x: -centerOfMass.x, y: 0.75 - centerOfMass.y };
+  if (kind === 'scooter') return { x: -1.7 - centerOfMass.x, y: -centerOfMass.y };
+  return { x: -centerOfMass.x, y: 0.2 - centerOfMass.y };
 }
 
 function payloadJoint(kind: 'passenger' | 'roofCargo' | 'scooter'): string | undefined {

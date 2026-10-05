@@ -4,6 +4,22 @@ import { createRideWorld } from './demoWorld';
 import { driveForceN } from './driveModel';
 
 describe('mundos de la campaña', () => {
+  it('desplaza la geometría física respecto del centro de gravedad calculado', () => {
+    const centered = createRideWorld('primer-recorrido');
+    const offset = { x: 0.2, y: 0.1 };
+    const shifted = createRideWorld('primer-recorrido', { centerOfMass: offset });
+    const centeredSnapshot = centered.snapshot();
+    const shiftedSnapshot = shifted.snapshot();
+
+    expect(shiftedSnapshot.body.centerOfMassOffset).toEqual(offset);
+    expect(shiftedSnapshot.body.wheels[0]?.offset.x).toBeCloseTo(
+      (centeredSnapshot.body.wheels[0]?.offset.x ?? 0) - offset.x,
+    );
+    expect(shiftedSnapshot.body.wheels[0]?.offset.y).toBeCloseTo(
+      (centeredSnapshot.body.wheels[0]?.offset.y ?? 0) - offset.y,
+    );
+  });
+
   it('la suspensión protege una carga del impacto inicial de pista dañada', () => {
     const rigid = createRideWorld('pista-danada', { roofRack: true });
     const suspended = createRideWorld('pista-danada', {

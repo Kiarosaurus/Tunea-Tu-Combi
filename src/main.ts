@@ -28,6 +28,12 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === 'Escape') {
     if (snapshot.state === 'PLAYING') controller.dispatch({ type: 'PAUSE' });
     else if (snapshot.state === 'PAUSED') controller.dispatch({ type: 'RESUME' });
+  } else if ((event.key === 'r' || event.key === 'R') &&
+    (snapshot.state === 'PLAYING' || snapshot.state === 'PAUSED')) {
+    event.preventDefault();
+    if (window.confirm('¿Reiniciar este intento desde el inicio?')) {
+      controller.dispatch({ type: 'RESTART_RIDE' });
+    }
   } else if (snapshot.state === 'PLAYING') {
     if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') {
       event.preventDefault();

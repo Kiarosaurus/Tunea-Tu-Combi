@@ -37,6 +37,8 @@ export interface LevelOneEquipment {
   readonly reinforcedSuspension?: boolean;
   readonly roofRack?: boolean;
   readonly rearCarrier?: boolean;
+  readonly bodyMassKg?: number;
+  readonly centerOfMass?: { readonly x: number; readonly y: number };
 }
 
 export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsWorld {
@@ -45,28 +47,32 @@ export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsW
 
 export function createRideWorld(levelId: string, equipment: LevelOneEquipment = {}): PhysicsWorld {
   const terrain = terrainForLevel(levelId);
+  const centerOfMass = equipment.centerOfMass ?? { x: 0, y: 0 };
   const body: RigidBody = {
     id: `${levelId}-combi`,
     position: { x: 2, y: 2.5 },
     angleRadians: 0,
     velocity: { x: 0, y: 0 },
     angularVelocity: 0,
-    massKg: 700,
+    massKg: equipment.bodyMassKg ?? 700,
     inertiaKgM2: 950,
     force: { x: 0, y: 0 },
     torqueNm: 0,
+    centerOfMassOffset: { ...centerOfMass },
     wheels: [
-      { offset: { x: -1.05, y: -0.55 }, radius: 0.4,
+      { offset: { x: -1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }, radius: 0.4,
         ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}) },
-      { offset: { x: 1.05, y: -0.55 }, radius: 0.4,
+      { offset: { x: 1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }, radius: 0.4,
         ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}) },
     ],
   };
   const joints: JointMount[] = [];
   const threshold = equipment.reinforcedSuspension ? 3000 : 2200;
-  if (equipment.roofRack) joints.push({ id: 'roofRack', offset: { x: 0, y: 0.75 },
+  if (equipment.roofRack) joints.push({ id: 'roofRack',
+    offset: { x: -centerOfMass.x, y: 0.75 - centerOfMass.y },
     massKg: partMass('roofRack'), breakImpulseNs: threshold });
-  if (equipment.rearCarrier) joints.push({ id: 'rearCarrier', offset: { x: -1.7, y: 0 },
+  if (equipment.rearCarrier) joints.push({ id: 'rearCarrier',
+    offset: { x: -1.7 - centerOfMass.x, y: -centerOfMass.y },
     massKg: partMass('rearCarrier'), breakImpulseNs: threshold });
   return new PhysicsWorld(body, terrain, joints);
 }

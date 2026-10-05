@@ -5,9 +5,10 @@ el curso de Computación Gráfica de UTEC. El producto usa Canvas 2D y genera un
 único `index.html` que abre desde disco sin servidor ni conexión a internet.
 
 La versión actual incluye TypeScript estricto, una máquina de estados explícita,
-un núcleo físico propio, taller modular y un primer recorrido jugable de
-30 segundos. Los cinco niveles y siete tipos de piezas están definidos como
-datos; los cinco niveles están disponibles y se desbloquean en orden.
+un núcleo físico propio, taller modular y cinco recorridos jugables de
+30 segundos. Los siete tipos de piezas están definidos como datos y los niveles
+se desbloquean en orden. El menú ofrece un perfil de demostración independiente
+para revisar inmediatamente toda la campaña.
 
 ## Requisitos
 
@@ -106,7 +107,9 @@ pieza usada libre se vende por el 70 % redondeado. El kit básico no se vende.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
 `Espacio` frena y `E` recoge o baja al pasajero cercano. También hay botones
-visibles para estas acciones. `Esc` pausa y `F1` alterna la depuración gráfica.
+visibles para estas acciones. `Esc` pausa, `R` reinicia con confirmación y `F1`
+alterna la depuración gráfica. El menú permite reducir el movimiento; la opción
+se conserva en el guardado local.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
 incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su

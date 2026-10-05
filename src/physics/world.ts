@@ -31,6 +31,7 @@ export interface RigidBody {
   force: Vector2;
   torqueNm: number;
   readonly wheels: readonly WheelCollider[];
+  readonly centerOfMassOffset?: Vector2;
 }
 
 export interface WheelContact {
@@ -250,6 +251,7 @@ export class PhysicsWorld {
           offset: { ...wheel.offset },
           ...(wheel.suspension ? { suspension: { ...wheel.suspension } } : {}),
         })),
+        ...(body.centerOfMassOffset ? { centerOfMassOffset: { ...body.centerOfMassOffset } } : {}),
       },
       terrain: this.#terrain.map((segment) => ({ start: { ...segment.start }, end: { ...segment.end } })),
       contacts: this.#contacts.map((contact) => ({
@@ -346,6 +348,8 @@ function validateBody(body: RigidBody): void {
       (wheel.frictionCoefficient !== undefined &&
         (!Number.isFinite(wheel.frictionCoefficient) || wheel.frictionCoefficient < 0 || wheel.frictionCoefficient > 2)) ||
       (wheel.suspension !== undefined && !validSuspension(wheel.suspension))) ||
+    (body.centerOfMassOffset !== undefined &&
+      ![body.centerOfMassOffset.x, body.centerOfMassOffset.y].every(Number.isFinite)) ||
     !isFiniteBody(body)) {
     throw new Error('El cuerpo físico requiere masa, inercia, ruedas y valores finitos.');
   }

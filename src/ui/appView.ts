@@ -2,7 +2,7 @@ import type { AppAction, AppSnapshot } from '../app/appController';
 import type { Disposable } from '../core/contracts';
 import { LEVELS } from '../data/levels';
 import { PART_CATALOG } from '../data/parts';
-import { ANCHORS, createInitialGameModel, passengerCapacity, vehicleCapacity, type AnchorId } from '../game/model';
+import { ANCHORS, buildStats, createInitialGameModel, passengerCapacity, vehicleCapacity, type AnchorId } from '../game/model';
 import { STOP_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
 
@@ -60,6 +60,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
     canvas,
     render(snapshot): void {
       root.dataset.appState = snapshot.state;
+      root.dataset.reducedMotion = String(snapshot.reducedMotion);
       routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
         ?? 'CAMPAÑA DE LIMA';
       debugButton.textContent = snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no';
@@ -71,6 +72,11 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       visibleState = snapshot.state;
       screen.replaceChildren(createScreen(snapshot, dispatch));
       if (snapshot.state === 'PLAYING') updatePlayingScreen(screen, snapshot);
+      const heading = screen.querySelector<HTMLElement>('h1');
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+      }
     },
     destroy(): void {
       root.replaceChildren();
@@ -115,7 +121,19 @@ function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) =
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
   reset.classList.add('reset-action');
-  panel.append(reset, statusMessage(snapshot.message));
+  const demo = actionButton('Cargar perfil de demostración', 'text-action', () => {
+    if (window.confirm('¿Reemplazar el progreso actual por un perfil de demostración?')) {
+      dispatch({ type: 'LOAD_DEMO_PROFILE' });
+    }
+  });
+  panel.append(
+    actionButton(`Movimiento reducido: ${snapshot.reducedMotion ? 'sí' : 'no'}`,
+      'text-action settings-action', () => dispatch({ type: 'TOGGLE_REDUCED_MOTION' })),
+    demo,
+    reset,
+    textElement('p', 'phase-note', 'Créditos: equipo Tunea Tu Combi, Computación Gráfica UTEC.'),
+    statusMessage(snapshot.message),
+  );
   return panel;
 }
 
@@ -134,6 +152,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   for (const level of LEVELS) {
     const isUnlocked = level.number <= snapshot.game.unlockedLevel;
     const isPlayable = level.number <= 5;
+    const best = snapshot.game.completedLevels[level.id];
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'level-card';
@@ -145,6 +164,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
       textElement('span', 'level-challenge', level.challenge),
       textElement('span', 'level-quota', `Cuota S/ ${level.quota}`),
       textElement('span', 'level-status', isPlayable && isUnlocked ? 'Disponible' : isUnlocked ? 'Desbloqueado, próximamente' : 'Bloqueado'),
+      textElement('span', 'level-best', best ? `Mejor S/ ${best.bestRevenue}` : 'Sin completar'),
     );
     if (isPlayable) card.addEventListener('click', () =>
       dispatch({ type: 'SELECT_LEVEL', levelId: level.id }));
@@ -156,6 +176,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
 
 function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
+  const stats = buildStats(snapshot.game.workshopBuild);
   const panel = panelElement('workshop-panel');
   panel.append(
     actionButton('Volver a rutas', 'text-action', () => dispatch({ type: 'BACK' })),
@@ -173,18 +194,21 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     definitionItem('Carga techo', String(vehicleCapacity(snapshot.game.workshopBuild).roofCargo)),
     definitionItem('Scooter posterior', String(vehicleCapacity(snapshot.game.workshopBuild).scooter)),
     definitionItem('Cuota', `S/ ${level?.quota ?? 25}`),
+    definitionItem('Masa total', `${stats.massKg} kg`),
+    definitionItem('Potencia', `${stats.engineForceN} N`),
+    definitionItem('Centro de gravedad', `${stats.centerOfMass.x.toFixed(2)}, ${stats.centerOfMass.y.toFixed(2)} m`),
   );
   panel.append(summary);
 
   const shop = document.createElement('section');
   shop.className = 'workshop-section';
-  shop.append(textElement('h2', 'workshop-heading', 'Tienda e inventario'));
+  shop.append(textElement('h2', 'workshop-heading', 'Tienda'));
   const basicInventory = createInitialGameModel().ownedParts;
   for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
     const row = document.createElement('div');
     row.className = 'shop-row';
     row.append(textElement('span', '',
-      `${part.name} - S/ ${part.price} - ${part.massKg} kg - tienes ${snapshot.game.ownedParts[part.kind]}`));
+      `${part.name} N${part.level} - S/ ${part.price} - ${part.massKg} kg - ${part.space} - ${part.function}. ${part.effect}.`));
     row.append(actionButton(`Comprar ${part.name}`, 'small-action', () =>
       dispatch({ type: 'BUY_PART', kind: part.kind })));
     if (snapshot.game.pendingPurchases[part.kind] > 0) {
@@ -197,6 +221,17 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     shop.append(row);
   }
   panel.append(shop);
+
+  const inventory = document.createElement('section');
+  inventory.className = 'workshop-section';
+  inventory.append(textElement('h2', 'workshop-heading', 'Inventario'));
+  for (const part of PART_CATALOG) {
+    const placedCount = Object.values(snapshot.game.workshopBuild)
+      .filter((item) => item === part.kind).length;
+    inventory.append(textElement('p', 'inventory-row',
+      `${part.name}: ${snapshot.game.ownedParts[part.kind]} en total, ${placedCount} colocadas.`));
+  }
+  panel.append(inventory);
 
   const anchors = document.createElement('section');
   anchors.className = 'workshop-section';
@@ -220,6 +255,9 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     anchors.append(row);
   }
   panel.append(anchors, statusMessage(snapshot.message),
+    textElement('p', 'control-hint', 'Controles: A / izquierda reversa, D / derecha acelera, Espacio frena, E interactúa, Esc pausa, R reinicia y F1 depura.'),
+    actionButton('Limpiar piezas opcionales', 'small-action secondary-action', () =>
+      dispatch({ type: 'CLEAR_OPTIONAL_PARTS' })),
     actionButton('Iniciar recorrido de 30 segundos', 'primary-action', () =>
       dispatch({ type: 'START_RIDE' })));
   return panel;
@@ -307,6 +345,9 @@ function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement 
     textElement('p', 'eyebrow', 'Tiempo detenido'),
     textElement('h1', 'section-title', 'En pausa'),
     actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
+    actionButton('Reiniciar intento', 'small-action secondary-action', () => {
+      if (window.confirm('¿Reiniciar este intento desde el inicio?')) dispatch({ type: 'RESTART_RIDE' });
+    }),
     actionButton('Volver al taller', 'text-action', () => {
       if (window.confirm('¿Terminar este intento sin acreditar ingresos?')) dispatch({ type: 'ABORT_RIDE' });
     }),
@@ -329,6 +370,8 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     definitionItem('Cuota', `S/ ${level?.quota ?? 0}`),
     definitionItem('Solicitudes', String(snapshot.ride?.deliveredCount ?? 0)),
     definitionItem('Masa máxima', `${snapshot.ride?.maximumPayloadMassKg ?? 0} kg`),
+    definitionItem('Estabilidad', `${snapshot.ride?.stabilityPercent ?? 0} %`),
+    definitionItem('Piezas perdidas', String(snapshot.ride?.lostPieces ?? 0)),
   );
   panel.append(summary,
     textElement('p', 'phase-note', `Semilla: ${snapshot.ride?.seed ?? 'sin intento'}`),

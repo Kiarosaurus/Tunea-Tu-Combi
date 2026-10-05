@@ -20,6 +20,8 @@ export interface RideSnapshot {
   readonly deliveredRevenue: number;
   readonly deliveredCount: number;
   readonly maximumPayloadMassKg: number;
+  readonly stabilityPercent: number;
+  readonly lostPieces: number;
   readonly requests: readonly RequestProgress[];
   readonly seed: string;
   readonly finished: boolean;
@@ -32,6 +34,8 @@ export class RideSession {
   #deliveredRevenue = 0;
   #deliveredCount = 0;
   #maximumPayloadMassKg = 0;
+  #maximumTiltRadians = 0;
+  #lostPieces = 0;
   #requests: RequestProgress[];
   readonly #seed: string;
   readonly #finishX: number;
@@ -52,17 +56,22 @@ export class RideSession {
       deliveredRevenue: this.#deliveredRevenue,
       deliveredCount: this.#deliveredCount,
       maximumPayloadMassKg: this.#maximumPayloadMassKg,
+      stabilityPercent: Math.max(0, Math.round(100 - this.#maximumTiltRadians * 90)),
+      lostPieces: this.#lostPieces,
       requests: this.#requests.map((progress) => ({ ...progress })),
       seed: this.#seed,
       finished: this.#finished,
     };
   }
 
-  advance(durationSeconds: number, vehicleX: number): void {
-    if (!Number.isFinite(durationSeconds) || durationSeconds < 0 || !Number.isFinite(vehicleX)) {
+  advance(durationSeconds: number, vehicleX: number, angleRadians = 0, brokenJoints = 0): void {
+    if (!Number.isFinite(durationSeconds) || durationSeconds < 0 || !Number.isFinite(vehicleX) ||
+      !Number.isFinite(angleRadians) || !Number.isInteger(brokenJoints) || brokenJoints < 0) {
       throw new Error('Tiempo o posición inválidos.');
     }
     if (this.#finished) return;
+    this.#maximumTiltRadians = Math.max(this.#maximumTiltRadians, Math.abs(angleRadians));
+    this.#lostPieces = Math.max(this.#lostPieces, brokenJoints);
     this.#remainingSeconds = Math.max(0, this.#remainingSeconds - durationSeconds);
     this.#requests = this.#requests.map((progress) =>
       progress.status === 'waiting' && vehicleX > progress.request.originX + STOP_RADIUS_METERS

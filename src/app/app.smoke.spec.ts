@@ -25,6 +25,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await page.goto(artifactUrl);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
   await expect(page.getByRole('heading', { name: 'Tu ruta. Tu máquina.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tu ruta. Tu máquina.' })).toBeFocused();
   await expect(page.locator('canvas')).toBeVisible();
   await expect.poll(async () =>
     Number(await page.locator('canvas').getAttribute('data-physics-y')),
@@ -63,6 +64,9 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PAUSED');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
+  page.once('dialog', async (dialog) => dialog.accept());
+  await page.keyboard.press('r');
+  await expect(page.locator('[data-ui="time"]')).toHaveText('30 s');
 
   await page.keyboard.down('d');
   const delivery = page.locator('[data-ui="deliver"]');
@@ -91,6 +95,22 @@ test('recupera un guardado corrupto sin bloquear el menú', async ({ page }) => 
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
   await expect(page.getByRole('status')).toContainText('Guardado inválido recuperado');
   await expect(page.getByRole('button', { name: 'Empezar recorrido' })).toBeEnabled();
+});
+
+test('carga un perfil de demostración y conserva preferencias accesibles', async ({ page }) => {
+  await page.goto(artifactUrl);
+  await page.getByRole('button', { name: 'Movimiento reducido: no' }).click();
+  await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
+  page.once('dialog', async (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Cargar perfil de demostración' }).click();
+  await expect(page.getByText(/Nivel desbloqueado: 5/)).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
+  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
+  await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Hora punta/ }).click();
+  await expect(page.getByText('Masa total').locator('..')).toContainText('796 kg');
+  await expect(page.getByText('Centro de gravedad').locator('..')).toContainText('m');
 });
 
 test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {
@@ -156,6 +176,8 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
     ['Entregar carga en Óvalo', 'S/ 85'],
     ['Bajar en Terminal', 'S/ 110'],
   ]);
+  await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
+  await expect(page.getByText('Piezas perdidas').locator('..')).toContainText('0');
   await page.reload();
   await expect(page.getByText(/Nivel desbloqueado: 5/)).toBeVisible();
   const finalRevenue = await page.evaluate(() => {

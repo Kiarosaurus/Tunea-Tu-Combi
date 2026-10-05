@@ -162,8 +162,9 @@ function drawCombi(
   const pixelsPerMeter = worldScale(width, height);
   const bodyWidth = 3.1 * pixelsPerMeter;
   const bodyHeight = 1.25 * pixelsPerMeter;
-  const x = -bodyWidth / 2;
-  const y = -1.03 * pixelsPerMeter;
+  const centerOfMass = world.body.centerOfMassOffset ?? { x: 0, y: 0 };
+  const x = -bodyWidth / 2 - centerOfMass.x * pixelsPerMeter;
+  const y = -1.03 * pixelsPerMeter + centerOfMass.y * pixelsPerMeter;
   const center = worldToScreen(world.body.position, world, width, height);
 
   context.save();

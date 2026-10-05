@@ -40,6 +40,13 @@ describe('primer recorrido', () => {
     expect(RIDE_DURATION_SECONDS).toBe(30);
   });
 
+  it('resume estabilidad y piezas perdidas del intento', () => {
+    const ride = new RideSession();
+    ride.advance(1, 2, 0.4, 1);
+    expect(ride.snapshot.stabilityPercent).toBe(64);
+    expect(ride.snapshot.lostPieces).toBe(1);
+  });
+
   it('gana con dos entregas y desbloquea nivel 2', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 5, oneSeat);

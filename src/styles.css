@@ -215,6 +215,11 @@ button:focus-visible {
   color: #f2c14e;
 }
 
+.settings-action {
+  display: block;
+  margin-top: 18px;
+}
+
 .level-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(128px, 1fr));
@@ -283,6 +288,12 @@ button:focus-visible {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.level-best {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 10px;
 }
 
 .workshop-panel {
@@ -505,4 +516,11 @@ button:focus-visible {
     scroll-behavior: auto !important;
     transition: none !important;
   }
+}
+
+#app[data-reduced-motion="true"] *,
+#app[data-reduced-motion="true"] *::before,
+#app[data-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  transition: none !important;
 }

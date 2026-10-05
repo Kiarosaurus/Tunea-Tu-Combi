@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LocalSaveRepository, type StorageLike } from '../persistence/saveRepository';
 import { createSaveData } from '../persistence/saveRepository';
-import { createInitialGameModel } from '../game/model';
+import { buildStats, createInitialGameModel } from '../game/model';
 import { AppController } from './appController';
 
 function memoryStorage(): StorageLike {
@@ -123,7 +123,9 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BUY_PART', kind: 'roofRack' });
     controller.dispatch({ type: 'PLACE_PART', kind: 'roofRack', anchor: 'roof' });
     controller.dispatch({ type: 'START_RIDE' });
-    expect(controller.worldSnapshot.body.massKg).toBe(728);
+    expect(controller.worldSnapshot.body.massKg).toBe(
+      buildStats(controller.snapshot.game.workshopBuild).massKg,
+    );
     expect(controller.worldSnapshot.joints[0]).toMatchObject({ id: 'roofRack', broken: false });
   });
 
@@ -216,5 +218,32 @@ describe('flujo vertical del primer recorrido', () => {
     const recovered = new AppController(new LocalSaveRepository(storage));
     expect(recovered.snapshot.saveRecovered).toBe(true);
     expect(recovered.snapshot.game.wallet).toBe(100);
+  });
+
+  it('carga el perfil de demostración y conserva movimiento reducido', () => {
+    const storage = memoryStorage();
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'LOAD_DEMO_PROFILE' });
+    controller.dispatch({ type: 'TOGGLE_REDUCED_MOTION' });
+    expect(controller.snapshot.game.unlockedLevel).toBe(5);
+    expect(controller.snapshot.game.workshopBuild.suspension).toBe('suspension');
+    expect(controller.snapshot.reducedMotion).toBe(true);
+    const reloaded = new AppController(new LocalSaveRepository(storage));
+    expect(reloaded.snapshot.game.unlockedLevel).toBe(5);
+    expect(reloaded.snapshot.reducedMotion).toBe(true);
+  });
+
+  it('reinicia un intento activo sin consumir progreso', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.ride?.remainingSeconds).toBeLessThan(30);
+    controller.dispatch({ type: 'RESTART_RIDE' });
+    expect(controller.snapshot.state).toBe('PLAYING');
+    expect(controller.snapshot.ride?.remainingSeconds).toBe(30);
+    expect(controller.snapshot.vehicleX).toBe(2);
   });
 });

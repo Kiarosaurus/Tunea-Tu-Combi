@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { PART_CATALOG } from '../data/parts';
 import {
   buyPart,
+  buildStats,
+  clearOptionalParts,
+  createDemoGameModel,
   createInitialGameModel,
   passengerCapacity,
   placePart,
@@ -11,6 +15,10 @@ import {
 } from './model';
 
 describe('taller y economía', () => {
+  it('mantiene el catálogo canónico de siete tipos de pieza', () => {
+    expect(PART_CATALOG).toHaveLength(7);
+  });
+
   it('entrega un kit funcional sin capacidad extra de pasajeros', () => {
     const initial = createInitialGameModel();
     expect(validateBuild(initial.workshopBuild)).toBeNull();
@@ -53,5 +61,31 @@ describe('taller y economía', () => {
     const used = { ...purchased, pendingPurchases: { ...purchased.pendingPurchases, seat: 0 } };
     const sold = sellPart(used, 'seat');
     expect(sold.wallet).toBe(initial.wallet - 15 + 11);
+  });
+
+  it('calcula masa y centro de gravedad de una construcción conocida', () => {
+    const initialStats = buildStats(createInitialGameModel().workshopBuild);
+    expect(initialStats.massKg).toBe(698);
+    expect(initialStats.bodyMassKg).toBe(698);
+    expect(initialStats.engineForceN).toBe(2200);
+    const demoStats = buildStats(createDemoGameModel().workshopBuild);
+    expect(demoStats.massKg).toBe(796);
+    expect(demoStats.bodyMassKg).toBe(734);
+    expect(demoStats.centerOfMass.y).toBeGreaterThan(initialStats.centerOfMass.y);
+  });
+
+  it('crea un perfil de demostración completo y sin compras pendientes', () => {
+    const demo = createDemoGameModel();
+    expect(demo.unlockedLevel).toBe(5);
+    expect(validateBuild(demo.workshopBuild)).toBeNull();
+    expect(Object.values(demo.pendingPurchases).every((count) => count === 0)).toBe(true);
+  });
+
+  it('limpia piezas opcionales sin perder el kit ni el inventario', () => {
+    const demo = createDemoGameModel();
+    const cleaned = clearOptionalParts(demo);
+    expect(validateBuild(cleaned.workshopBuild)).toBeNull();
+    expect(cleaned.workshopBuild.roof).toBeUndefined();
+    expect(cleaned.ownedParts).toEqual(demo.ownedParts);
   });
 });
