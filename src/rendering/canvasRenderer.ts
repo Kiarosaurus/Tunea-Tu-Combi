@@ -12,7 +12,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement): CanvasRenderer 
   if (!canvasContext) throw new Error('El navegador no ofrece Canvas 2D.');
   const context = canvasContext;
 
-  let currentSnapshot: AppSnapshot = { state: 'BOOT', selectedLevelId: null, debugEnabled: false };
+  let currentSnapshot: AppSnapshot | null = null;
   let currentWorld: WorldSnapshot | null = null;
 
   function resize(): void {
@@ -22,7 +22,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement): CanvasRenderer 
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
     context.setTransform(scale, 0, 0, scale, 0, 0);
-    if (currentWorld) draw(context, width, height, currentSnapshot, currentWorld);
+    if (currentWorld && currentSnapshot) draw(context, width, height, currentSnapshot, currentWorld);
   }
 
   const resizeObserver = new ResizeObserver(resize);
@@ -244,6 +244,51 @@ function drawDebug(
     context.beginPath();
     context.arc(point.x, point.y, 5, 0, Math.PI * 2);
     context.fill();
+    context.strokeStyle = '#58f2b4';
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x + contact.normal.x * 24,
+      point.y - contact.normal.y * 24);
+    context.stroke();
+    if (Math.abs(contact.frictionImpulseNs) > 0.01) {
+      const tangentScale = Math.min(28, Math.abs(contact.frictionImpulseNs) * 0.08);
+      const direction = Math.sign(contact.frictionImpulseNs);
+      context.strokeStyle = '#ff9f43';
+      context.beginPath();
+      context.moveTo(point.x, point.y);
+      context.lineTo(point.x + contact.normal.y * tangentScale * direction,
+        point.y + contact.normal.x * tangentScale * direction);
+      context.stroke();
+    }
+  }
+  context.strokeStyle = '#62b7ff';
+  context.fillStyle = '#62b7ff';
+  for (const spring of world.suspensionForces) {
+    const point = worldToScreen(spring.point, world, width, height);
+    const arrowLength = Math.min(42, spring.forceN * 0.004);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x, point.y - arrowLength);
+    context.stroke();
+    context.fillText(`S${spring.wheelIndex + 1}: ${Math.round(spring.forceN)} N`,
+      point.x + 6, point.y - arrowLength);
+  }
+  for (const joint of world.joints) {
+    const point = worldToScreen(
+      add(world.body.position, rotate(joint.offset, world.body.angleRadians)),
+      world, width, height,
+    );
+    context.strokeStyle = joint.broken ? '#ff726a' : '#f2c14e';
+    context.beginPath();
+    if (joint.broken) {
+      context.moveTo(point.x - 7, point.y - 7);
+      context.lineTo(point.x + 7, point.y + 7);
+      context.moveTo(point.x + 7, point.y - 7);
+      context.lineTo(point.x - 7, point.y + 7);
+    } else {
+      context.arc(point.x, point.y, 7, 0, Math.PI * 2);
+    }
+    context.stroke();
   }
   context.fillStyle = '#fff5d9';
   context.font = '12px system-ui';

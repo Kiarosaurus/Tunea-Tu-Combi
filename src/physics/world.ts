@@ -4,6 +4,15 @@ import { add, cross, dot, length, rotate, scale, subtract } from '../core/vector
 export interface WheelCollider {
   readonly offset: Vector2;
   readonly radius: number;
+  readonly frictionCoefficient?: number;
+  readonly suspension?: SuspensionParameters;
+}
+
+export interface SuspensionParameters {
+  readonly restLengthM: number;
+  readonly maxCompressionM: number;
+  readonly stiffnessNPerM: number;
+  readonly dampingNsPerM: number;
 }
 
 export interface TerrainSegment {
@@ -17,8 +26,8 @@ export interface RigidBody {
   angleRadians: number;
   velocity: Vector2;
   angularVelocity: number;
-  readonly massKg: number;
-  readonly inertiaKgM2: number;
+  massKg: number;
+  inertiaKgM2: number;
   force: Vector2;
   torqueNm: number;
   readonly wheels: readonly WheelCollider[];
@@ -29,12 +38,36 @@ export interface WheelContact {
   readonly normal: Vector2;
   readonly penetration: number;
   readonly wheelIndex: number;
+  readonly normalImpulseNs: number;
+  readonly frictionImpulseNs: number;
+}
+
+export interface SuspensionForce {
+  readonly wheelIndex: number;
+  readonly point: Vector2;
+  readonly compressionM: number;
+  readonly forceN: number;
+}
+
+export interface JointMount {
+  readonly id: string;
+  readonly offset: Vector2;
+  readonly massKg: number;
+  readonly breakImpulseNs: number;
+}
+
+export interface JointState extends JointMount {
+  readonly broken: boolean;
 }
 
 export interface WorldSnapshot {
   readonly body: Readonly<RigidBody>;
   readonly terrain: readonly TerrainSegment[];
   readonly contacts: readonly WheelContact[];
+  readonly suspensionForces: readonly SuspensionForce[];
+  readonly joints: readonly JointState[];
+  readonly payloadMassKg: number;
+  readonly lostPayloadIds: readonly string[];
   readonly gravity: Vector2;
 }
 
@@ -49,8 +82,16 @@ export class PhysicsWorld {
   readonly #body: RigidBody;
   readonly #terrain: readonly TerrainSegment[];
   #contacts: WheelContact[] = [];
+  #suspensionForces: SuspensionForce[] = [];
+  #joints: JointState[];
+  readonly #payloads = new Map<string, {
+    readonly massKg: number;
+    readonly offset: Vector2;
+    readonly jointId?: string;
+  }>();
+  readonly #lostPayloadIds = new Set<string>();
 
-  constructor(body: RigidBody, terrain: readonly TerrainSegment[]) {
+  constructor(body: RigidBody, terrain: readonly TerrainSegment[], joints: readonly JointMount[] = []) {
     validateBody(body);
     if (terrain.length === 0 || terrain.some((segment) =>
       ![segment.start.x, segment.start.y, segment.end.x, segment.end.y].every(Number.isFinite) ||
@@ -60,6 +101,16 @@ export class PhysicsWorld {
     }
     this.#body = body;
     this.#terrain = terrain;
+    if (joints.some((joint) => !joint.id || joint.massKg <= 0 || joint.breakImpulseNs <= 0 ||
+      ![joint.offset.x, joint.offset.y, joint.massKg, joint.breakImpulseNs].every(Number.isFinite)) ||
+      new Set(joints.map((joint) => joint.id)).size !== joints.length) {
+      throw new Error('Las uniones requieren identificadores únicos, masa y umbral válidos.');
+    }
+    this.#joints = joints.map((joint) => ({ ...joint, offset: { ...joint.offset }, broken: false }));
+    for (const joint of joints) {
+      body.massKg += joint.massKg;
+      body.inertiaKgM2 += joint.massKg * dot(joint.offset, joint.offset);
+    }
   }
 
   step(durationSeconds: number): void {
@@ -68,6 +119,7 @@ export class PhysicsWorld {
     }
 
     const body = this.#body;
+    this.#applySuspensionForces();
     const acceleration = add(GRAVITY, scale(body.force, 1 / body.massKg));
     body.velocity = add(body.velocity, scale(acceleration, durationSeconds));
     body.angularVelocity += (body.torqueNm / body.inertiaKgM2) * durationSeconds;
@@ -78,6 +130,7 @@ export class PhysicsWorld {
     body.force = { x: 0, y: 0 };
     body.torqueNm = 0;
 
+    const contactImpulses = new Map<number, ContactImpulses>();
     // Dos pasadas reducen la penetración cuando las dos ruedas tocan el suelo.
     for (let pass = 0; pass < 2; pass += 1) {
       for (let wheelIndex = 0; wheelIndex < body.wheels.length; wheelIndex += 1) {
@@ -85,7 +138,11 @@ export class PhysicsWorld {
         if (!wheel) continue;
         for (const segment of this.#terrain) {
           const contact = findContact(body, wheel, segment, wheelIndex);
-          if (contact) resolveContact(body, contact);
+          if (contact) {
+            const impulses = resolveContact(body, contact, wheel, durationSeconds, pass === 0);
+            if (pass === 0) contactImpulses.set(wheelIndex, impulses);
+            this.#breakOverloadedJoints(impulses.normalImpulseNs);
+          }
         }
       }
     }
@@ -93,7 +150,11 @@ export class PhysicsWorld {
     this.#contacts = body.wheels.flatMap((wheel, wheelIndex) =>
       this.#terrain.flatMap((segment) => {
         const contact = findContact(body, wheel, segment, wheelIndex);
-        return contact ? [contact] : [];
+        if (!contact) return [];
+        const impulses = contactImpulses.get(wheelIndex);
+        return [{ ...contact,
+          normalImpulseNs: impulses?.normalImpulseNs ?? 0,
+          frictionImpulseNs: impulses?.frictionImpulseNs ?? 0 }];
       }),
     );
 
@@ -108,6 +169,74 @@ export class PhysicsWorld {
     this.#body.torqueNm += cross(subtract(point, this.#body.position), force);
   }
 
+  attachPayload(id: string, massKg: number, offset: Vector2 = { x: 0, y: 0 }, jointId?: string): void {
+    if (!id || this.#payloads.has(id) || !(massKg > 0) ||
+      ![massKg, offset.x, offset.y].every(Number.isFinite)) {
+      throw new Error('La carga física requiere un identificador nuevo, masa y posición válidos.');
+    }
+    if (jointId && !this.#joints.some((joint) => joint.id === jointId && !joint.broken)) {
+      throw new Error('La carga física requiere una unión disponible.');
+    }
+    this.#payloads.set(id, { massKg, offset: { ...offset }, ...(jointId ? { jointId } : {}) });
+    this.#body.massKg += massKg;
+    this.#body.inertiaKgM2 += massKg * dot(offset, offset);
+  }
+
+  detachPayload(id: string): void {
+    const payload = this.#payloads.get(id);
+    if (!payload) throw new Error('La carga física no está montada.');
+    this.#body.massKg -= payload.massKg;
+    this.#body.inertiaKgM2 -= payload.massKg * dot(payload.offset, payload.offset);
+    this.#payloads.delete(id);
+  }
+
+  #applySuspensionForces(): void {
+    const body = this.#body;
+    this.#suspensionForces = [];
+    for (const [wheelIndex, wheel] of body.wheels.entries()) {
+      const suspension = wheel.suspension;
+      if (!suspension) continue;
+      const mount = add(body.position, rotate(wheel.offset, body.angleRadians));
+      const segment = this.#terrain.find((candidate) =>
+        mount.x >= candidate.start.x && mount.x <= candidate.end.x);
+      if (!segment) continue;
+      const fraction = (mount.x - segment.start.x) / (segment.end.x - segment.start.x);
+      const groundY = segment.start.y + (segment.end.y - segment.start.y) * fraction;
+      const clearance = mount.y - wheel.radius - groundY;
+      const compression = clamp(suspension.restLengthM - clearance, 0,
+        suspension.maxCompressionM);
+      if (compression === 0) continue;
+      const arm = subtract(mount, body.position);
+      const mountVelocityY = body.velocity.y + body.angularVelocity * arm.x;
+      const springForce = Math.max(0, suspension.stiffnessNPerM * compression -
+        suspension.dampingNsPerM * mountVelocityY);
+      this.#suspensionForces.push({ wheelIndex, point: { ...mount },
+        compressionM: compression, forceN: springForce });
+      this.applyForce({ x: 0, y: springForce }, mount);
+    }
+  }
+
+  #breakOverloadedJoints(impactImpulse: number): void {
+    if (impactImpulse <= 0) return;
+    this.#joints = this.#joints.map((joint) => {
+      if (joint.broken || impactImpulse < joint.breakImpulseNs) return joint;
+      this.#body.massKg -= joint.massKg;
+      this.#body.inertiaKgM2 -= joint.massKg * dot(joint.offset, joint.offset);
+      this.#dropPayloadsForJoint(joint.id);
+      return { ...joint, broken: true };
+    });
+  }
+
+  #dropPayloadsForJoint(jointId: string): void {
+    for (const [id, payload] of this.#payloads) {
+      if (payload.jointId !== jointId) continue;
+      this.#body.massKg -= payload.massKg;
+      this.#body.inertiaKgM2 -= payload.massKg * dot(payload.offset, payload.offset);
+      this.#payloads.delete(id);
+      this.#lostPayloadIds.add(id);
+    }
+  }
+
   snapshot(): WorldSnapshot {
     const body = this.#body;
     return {
@@ -116,7 +245,11 @@ export class PhysicsWorld {
         position: { ...body.position },
         velocity: { ...body.velocity },
         force: { ...body.force },
-        wheels: body.wheels.map((wheel) => ({ offset: { ...wheel.offset }, radius: wheel.radius })),
+        wheels: body.wheels.map((wheel) => ({
+          ...wheel,
+          offset: { ...wheel.offset },
+          ...(wheel.suspension ? { suspension: { ...wheel.suspension } } : {}),
+        })),
       },
       terrain: this.#terrain.map((segment) => ({ start: { ...segment.start }, end: { ...segment.end } })),
       contacts: this.#contacts.map((contact) => ({
@@ -124,6 +257,13 @@ export class PhysicsWorld {
         point: { ...contact.point },
         normal: { ...contact.normal },
       })),
+      suspensionForces: this.#suspensionForces.map((spring) => ({
+        ...spring,
+        point: { ...spring.point },
+      })),
+      joints: this.#joints.map((joint) => ({ ...joint, offset: { ...joint.offset } })),
+      payloadMassKg: [...this.#payloads.values()].reduce((total, payload) => total + payload.massKg, 0),
+      lostPayloadIds: [...this.#lostPayloadIds],
       gravity: { ...GRAVITY },
     };
   }
@@ -148,21 +288,53 @@ function findContact(
     ((rawProjection < 0 || rawProjection > 1) && length(subtract(center, nearest)) > wheel.radius)) {
     return null;
   }
-  return { point: nearest, normal: upwardNormal, penetration, wheelIndex };
+  return { point: nearest, normal: upwardNormal, penetration, wheelIndex,
+    normalImpulseNs: 0, frictionImpulseNs: 0 };
 }
 
-function resolveContact(body: RigidBody, contact: WheelContact): void {
+interface ContactImpulses {
+  readonly normalImpulseNs: number;
+  readonly frictionImpulseNs: number;
+}
+
+function resolveContact(
+  body: RigidBody,
+  contact: WheelContact,
+  wheel: WheelCollider,
+  durationSeconds: number,
+  applyFriction: boolean,
+): ContactImpulses {
   const offset = subtract(contact.point, body.position);
   const pointVelocity = add(body.velocity, { x: -body.angularVelocity * offset.y, y: body.angularVelocity * offset.x });
   const normalSpeed = dot(pointVelocity, contact.normal);
+  let normalImpulse = 0;
+  let frictionImpulse = 0;
   if (normalSpeed < 0) {
     const lever = cross(offset, contact.normal);
     const inverseEffectiveMass = 1 / body.massKg + (lever * lever) / body.inertiaKgM2;
-    const impulse = -normalSpeed / inverseEffectiveMass;
-    body.velocity = add(body.velocity, scale(contact.normal, impulse / body.massKg));
-    body.angularVelocity += (lever * impulse) / body.inertiaKgM2;
+    normalImpulse = -normalSpeed / inverseEffectiveMass;
+    body.velocity = add(body.velocity, scale(contact.normal, normalImpulse / body.massKg));
+    body.angularVelocity += (lever * normalImpulse) / body.inertiaKgM2;
+  }
+  if (applyFriction && wheel.frictionCoefficient) {
+    const tangent = { x: contact.normal.y, y: -contact.normal.x };
+    const tangentLever = cross(offset, tangent);
+    const inverseEffectiveMass = 1 / body.massKg + (tangentLever * tangentLever) / body.inertiaKgM2;
+    const updatedPointVelocity = add(body.velocity, {
+      x: -body.angularVelocity * offset.y,
+      y: body.angularVelocity * offset.x,
+    });
+    const desiredImpulse = -dot(updatedPointVelocity, tangent) / inverseEffectiveMass;
+    // La gravedad aporta soporte aun cuando la rueda ya reposaba en el suelo.
+    const supportImpulse = body.massKg * Math.max(0, -dot(GRAVITY, contact.normal))
+      * durationSeconds / body.wheels.length;
+    const frictionLimit = wheel.frictionCoefficient * Math.max(normalImpulse, supportImpulse);
+    frictionImpulse = clamp(desiredImpulse, -frictionLimit, frictionLimit);
+    body.velocity = add(body.velocity, scale(tangent, frictionImpulse / body.massKg));
+    body.angularVelocity += (tangentLever * frictionImpulse) / body.inertiaKgM2;
   }
   body.position = add(body.position, scale(contact.normal, Math.max(contact.penetration - POSITION_SLOP, 0) * 0.8));
+  return { normalImpulseNs: normalImpulse, frictionImpulseNs: frictionImpulse };
 }
 
 function validateBody(body: RigidBody): void {
@@ -170,9 +342,21 @@ function validateBody(body: RigidBody): void {
     !Number.isFinite(body.massKg) || !Number.isFinite(body.inertiaKgM2) ||
     body.wheels.length === 0 ||
     body.wheels.some((wheel) => !(wheel.radius > 0) ||
-      ![wheel.offset.x, wheel.offset.y, wheel.radius].every(Number.isFinite)) || !isFiniteBody(body)) {
+      ![wheel.offset.x, wheel.offset.y, wheel.radius].every(Number.isFinite) ||
+      (wheel.frictionCoefficient !== undefined &&
+        (!Number.isFinite(wheel.frictionCoefficient) || wheel.frictionCoefficient < 0 || wheel.frictionCoefficient > 2)) ||
+      (wheel.suspension !== undefined && !validSuspension(wheel.suspension))) ||
+    !isFiniteBody(body)) {
     throw new Error('El cuerpo físico requiere masa, inercia, ruedas y valores finitos.');
   }
+}
+
+function validSuspension(suspension: SuspensionParameters): boolean {
+  return [suspension.restLengthM, suspension.maxCompressionM,
+    suspension.stiffnessNPerM, suspension.dampingNsPerM].every(Number.isFinite) &&
+    suspension.restLengthM > 0 && suspension.maxCompressionM > 0 &&
+    suspension.maxCompressionM <= suspension.restLengthM &&
+    suspension.stiffnessNPerM > 0 && suspension.dampingNsPerM >= 0;
 }
 
 function isFiniteBody(body: RigidBody): boolean {

@@ -4,10 +4,10 @@ Juego web 2D de construcción y conducción basado en físicas, desarrollado par
 el curso de Computación Gráfica de UTEC. El producto usa Canvas 2D y genera un
 único `index.html` que abre desde disco sin servidor ni conexión a internet.
 
-La base actual incluye TypeScript estricto, una máquina de estados explícita,
-selección de nivel, un taller provisional, datos para los cinco recorridos y
-siete tipos de piezas, y un núcleo físico propio con una combi de prueba.
-El ciclo jugable completo se incorporará en los siguientes hitos.
+La versión actual incluye TypeScript estricto, una máquina de estados explícita,
+un núcleo físico propio, taller modular y un primer recorrido jugable de
+30 segundos. Los cinco niveles y siete tipos de piezas están definidos como
+datos; solo el primer nivel está disponible para jugar en esta etapa.
 
 ## Requisitos
 
@@ -35,8 +35,9 @@ npm run test:smoke    # build y recorrido real con Playwright
 npm run verify        # todas las comprobaciones anteriores
 ```
 
-La prueba smoke abre el artefacto con `file://`, recorre menú, niveles y taller,
-y comprueba que no existan peticiones remotas ni errores de consola.
+La prueba smoke abre el artefacto con `file://`, completa el primer recorrido,
+recarga el guardado y comprueba que no existan peticiones remotas ni errores de
+consola.
 
 ## Build offline
 
@@ -57,8 +58,8 @@ src/
   core/         contratos y utilidades sin dependencias de presentación
   data/         niveles, piezas, precios y parámetros
   game/         reglas y modelo del juego
-  persistence/ contratos de guardado local
-  physics/      contratos y futuro solver físico propio
+  persistence/ esquema, validación y guardado local
+  physics/      solver físico propio y terreno
   rendering/    Canvas 2D y representación visual
   ui/           pantallas y acciones de alto nivel
 ```
@@ -74,14 +75,19 @@ apunta a la derecha y el vertical hacia arriba. El acumulador ejecuta pasos
 fijos de `1/60 s` con un máximo de 15 pasos por cuadro. El cuerpo rígido tiene
 masa, inercia, posición, ángulo y velocidades; las fuerzas se integran con
 Euler semiimplícito. Dos círculos representan las ruedas y resuelven contacto
-normal contra segmentos del terreno. La demo cae por gravedad y avanza con una
-velocidad inicial. La marca de las ruedas gira visualmente según la distancia
-recorrida; todavía no hay rotación de rueda independiente, motor, fricción
-lateral, suspensión ni uniones rompibles.
+normal contra segmentos del terreno. Un coeficiente opcional añade un impulso
+tangencial limitado por el apoyo de cada rueda. La demo cae por gravedad y
+avanza con una velocidad inicial. La marca de las ruedas gira visualmente según
+la distancia recorrida. Durante el nivel 1, un modelo de motor centralizado
+limita la aceleración y el frenado según el contacto y la tracción disponible.
+La suspensión reforzada aplica resorte y amortiguación si está equipada; la
+parrilla y el portacarga agregan masa mediante uniones que pueden romperse por
+impacto. Todavía no hay rotación de rueda independiente y la fricción pasiva
+configurable aún no se usa en la combi jugable.
 
 Pulsa `F1` o el botón de depuración para ver el centro del cuerpo, colisionadores,
-puntos de contacto y vector de gravedad. El dibujo usa instantáneas de la física
-y no altera la simulación. El límite actual es de 30 m/s de velocidad lineal y
+normales, fricción, suspensión, uniones y vector de gravedad. El dibujo usa
+instantáneas de la física y no altera la simulación. El límite actual es de 30 m/s de velocidad lineal y
 8 rad/s de velocidad angular; los cuadros largos se acotan para evitar saltos.
 
 ## Flujo disponible
@@ -92,8 +98,25 @@ La máquina de estados declara el flujo completo previsto:
 BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 ```
 
-La interfaz actual permite recorrer hasta `WORKSHOP`. Los estados de conducción
-y resultados quedan reservados para el ciclo vertical del juego.
+La interfaz recorre todos esos estados para el primer nivel. El jugador empieza
+con chasis, dos ruedas, motor y asiento del conductor. Para transportar un
+pasajero debe comprar y colocar un segundo asiento en el taller. Las compras
+recientes pueden devolverse por su precio completo antes del recorrido; una
+pieza usada libre se vende por el 70 % redondeado. El kit básico no se vende.
+
+En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
+`Espacio` frena y `E` recoge o baja al pasajero cercano. También hay botones
+visibles para estas acciones. `Esc` pausa y `F1` alterna la depuración gráfica.
+Las solicitudes se generan de forma reproducible desde la semilla del intento:
+incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
+inercia se agregan mientras están a bordo; una carga se pierde si rompe su
+unión. La cuota del primer recorrido es S/ 25. Solo el dinero entregado al destino se
+acredita al ganar; fallar conserva inventario y progreso previo.
+
+El guardado local usa la clave `tunea-tu-combi:save:v1`. Se valida antes de
+cargar; si está corrupto, se conserva su texto original en memoria durante la
+sesión y se inicia una partida segura. El menú permite borrar el progreso con
+confirmación. Una versión de prueba mínima `v0` se migra automáticamente a v1.
 
 Consulta `ASSETS.md` para conocer el origen y reemplazo de los gráficos
 provisionales.
