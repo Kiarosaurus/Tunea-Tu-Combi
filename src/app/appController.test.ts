@@ -37,6 +37,18 @@ function completeRide(controller: AppController): void {
   }
 }
 
+function fullyEquippedModel(unlockedLevel: number) {
+  const model = createInitialGameModel();
+  return {
+    ...model,
+    unlockedLevel,
+    ownedParts: { ...model.ownedParts, seat: 2, roofRack: 1, rearCarrier: 1, suspension: 1 },
+    workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat' as const,
+      roof: 'roofRack' as const, rearCarrier: 'rearCarrier' as const,
+      suspension: 'suspension' as const },
+  };
+}
+
 describe('flujo vertical del primer recorrido', () => {
   it('compra, completa la cuota, desbloquea nivel 2 y persiste tras recargar', () => {
     const storage = memoryStorage();
@@ -158,6 +170,37 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(4);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(30);
+  });
+
+  it('supera la pista dañada con suspensión y desbloquea el nivel 5', () => {
+    const storage = memoryStorage();
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(4), false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'pista-danada' });
+    controller.dispatch({ type: 'START_RIDE' });
+    completeRide(controller);
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(70);
+    expect(controller.snapshot.won).toBe(true);
+    expect(controller.snapshot.game.unlockedLevel).toBe(5);
+  });
+
+  it('completa hora punta y registra el final de la campaña', () => {
+    const storage = memoryStorage();
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(5), false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'hora-punta' });
+    controller.dispatch({ type: 'START_RIDE' });
+    completeRide(controller);
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(90);
+    expect(controller.snapshot.won).toBe(true);
+    expect(controller.snapshot.game.unlockedLevel).toBe(5);
+    expect(controller.snapshot.game.completedLevels['hora-punta']).toBeDefined();
   });
 
   it('bloquea una construcción sin rueda y recupera un guardado inválido', () => {

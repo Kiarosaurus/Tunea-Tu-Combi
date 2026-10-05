@@ -64,6 +64,10 @@ function drawSky(context: CanvasRenderingContext2D, width: number, height: numbe
     ? ['#17233a', '#70475d', '#efad67']
     : levelId === 'dia-de-mercado'
       ? ['#144450', '#397e78', '#f2ba67']
+      : levelId === 'pista-danada'
+        ? ['#18222d', '#46505a', '#d88658']
+        : levelId === 'hora-punta'
+          ? ['#211637', '#6c3157', '#f28c4b']
       : ['#10283c', '#20506a', '#ef9d5c'];
   const gradient = context.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, colors[0] ?? '#10283c');
@@ -115,6 +119,16 @@ function drawCity(context: CanvasRenderingContext2D, width: number, height: numb
     context.fillStyle = '#f2c14e';
     context.font = 'bold 14px system-ui';
     context.fillText('MIRADOR', width * 0.72, height * 0.46);
+  }
+  if (levelId === 'pista-danada') {
+    context.fillStyle = '#ff726a';
+    context.fillRect(width * 0.12, height * 0.61, 42, 8);
+    context.fillRect(width * 0.67, height * 0.59, 52, 8);
+  }
+  if (levelId === 'hora-punta') {
+    context.fillStyle = '#f2c14e';
+    context.font = 'bold 13px system-ui';
+    context.fillText('HORA PUNTA', width * 0.68, height * 0.5);
   }
 }
 

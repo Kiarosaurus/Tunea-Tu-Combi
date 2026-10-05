@@ -92,6 +92,27 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 20, y: 0.1 }, end: { x: 27, y: 0.9 } },
     { start: { x: 27, y: 0.9 }, end: { x: 40, y: 0 } },
   ];
+  if (levelId === 'pista-danada') return [
+    { start: { x: -2, y: 0 }, end: { x: 8, y: 0 } },
+    { start: { x: 8, y: 0 }, end: { x: 11, y: 0.75 } },
+    { start: { x: 11, y: 0.75 }, end: { x: 14, y: 0 } },
+    { start: { x: 14, y: 0 }, end: { x: 17, y: 1.05 } },
+    { start: { x: 17, y: 1.05 }, end: { x: 21, y: 0 } },
+    { start: { x: 21, y: 0 }, end: { x: 25, y: 0.55 } },
+    { start: { x: 25, y: 0.55 }, end: { x: 29, y: 0 } },
+    { start: { x: 29, y: 0 }, end: { x: 33, y: 0.9 } },
+    { start: { x: 33, y: 0.9 }, end: { x: 43, y: 0 } },
+  ];
+  if (levelId === 'hora-punta') return [
+    { start: { x: -2, y: 0 }, end: { x: 7, y: 0 } },
+    { start: { x: 7, y: 0 }, end: { x: 14, y: 1.4 } },
+    { start: { x: 14, y: 1.4 }, end: { x: 18, y: 0.8 } },
+    { start: { x: 18, y: 0.8 }, end: { x: 22, y: 1.5 } },
+    { start: { x: 22, y: 1.5 }, end: { x: 27, y: 0.5 } },
+    { start: { x: 27, y: 0.5 }, end: { x: 31, y: 1.2 } },
+    { start: { x: 31, y: 1.2 }, end: { x: 36, y: 0.2 } },
+    { start: { x: 36, y: 0.2 }, end: { x: 45, y: 0.2 } },
+  ];
   throw new Error(`No hay terreno jugable para ${levelId}.`);
 }
 

@@ -38,4 +38,14 @@ describe('generación de solicitudes', () => {
     expect(hill.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(40);
     expect(market.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(55);
   });
+
+  it('cubre las cuotas de pista dañada y hora punta con todos los soportes', () => {
+    const damaged = generateRequests('pista-danada', 'pista-danada-base');
+    const rush = generateRequests('hora-punta', 'hora-punta-base');
+    expect(damaged.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(70);
+    expect(rush.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(90);
+    expect(new Set(rush.map((request) => request.kind))).toEqual(
+      new Set(['passenger', 'roofCargo', 'scooter']),
+    );
+  });
 });

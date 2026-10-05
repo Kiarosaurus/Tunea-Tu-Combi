@@ -36,6 +36,21 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     cargoRequestForRoute('mercado-scooter', 'Mayorista', 'Terminal', 26, 34,
       'scooter', 18, 9, random),
   ];
+  if (levelId === 'pista-danada') return [
+    passengerRequest('pista-persona', 'Taller', 'Puente', 4, 12, 15, 7, random),
+    cargoRequestForRoute('pista-techo', 'Puente', 'Rompemuelles', 14, 25,
+      'roofCargo', 20, 10, random),
+    cargoRequestForRoute('pista-scooter', 'Rompemuelles', 'Meta', 27, 37,
+      'scooter', 20, 10, random),
+  ];
+  if (levelId === 'hora-punta') return [
+    passengerRequest('punta-uno', 'Avenida', 'Cruce', 3, 10, 17, 8, random),
+    cargoRequestForRoute('punta-techo', 'Cruce', 'Mercado', 11, 20,
+      'roofCargo', 20, 10, random),
+    cargoRequestForRoute('punta-scooter', 'Mercado', 'Óvalo', 21, 30,
+      'scooter', 20, 10, random),
+    passengerRequest('punta-dos', 'Óvalo', 'Terminal', 31, 39, 17, 8, random),
+  ];
   if (levelId !== 'primer-recorrido') throw new Error(`No hay solicitudes para ${levelId}.`);
   return [
     passengerRequest('primer-pasajero', 'Inicio', 'Centro', 5, 12, 10, 5, random),

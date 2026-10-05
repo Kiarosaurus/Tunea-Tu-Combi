@@ -254,7 +254,7 @@ export class AppController {
   #startRide(): void {
     if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller antes de iniciar.');
     const level = LEVELS.find((candidate) => candidate.id === this.#selectedLevelId);
-    if (!level || level.number > 3) throw new Error('Este recorrido estará disponible en una siguiente etapa.');
+    if (!level) throw new Error('Este recorrido no está disponible.');
     const issue = validateBuild(this.#model.workshopBuild);
     if (issue) throw new Error(issue);
     this.#world = createRideWorld(level.id, {

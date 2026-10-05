@@ -34,10 +34,11 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
 
   const header = document.createElement('header');
   header.className = 'topbar';
+  const routeBadge = textElement('span', 'prototype-badge', 'PRIMER RECORRIDO');
   header.append(
     textElement('span', 'brand-mark', 'TTC'),
     textElement('span', 'brand-name', 'Tunea Tu Combi'),
-    textElement('span', 'prototype-badge', 'PRIMER RECORRIDO'),
+    routeBadge,
   );
   const debugButton = actionButton('Depuración: no', 'debug-action', () =>
     dispatch({ type: 'TOGGLE_DEBUG' }));
@@ -59,6 +60,8 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
     canvas,
     render(snapshot): void {
       root.dataset.appState = snapshot.state;
+      routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
+        ?? 'CAMPAÑA DE LIMA';
       debugButton.textContent = snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no';
       debugButton.setAttribute('aria-pressed', String(snapshot.debugEnabled));
       if (snapshot.state === 'PLAYING' && visibleState === 'PLAYING') {
@@ -130,7 +133,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   grid.className = 'level-grid';
   for (const level of LEVELS) {
     const isUnlocked = level.number <= snapshot.game.unlockedLevel;
-    const isPlayable = level.number <= 3;
+    const isPlayable = level.number <= 5;
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'level-card';
@@ -159,9 +162,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     textElement('p', 'eyebrow', level?.name ?? 'Taller'),
     textElement('h1', 'section-title', 'Taller de la combi'),
     textElement('p', 'workshop-intro',
-      level?.number === 3
-        ? 'Equipa asiento, parrilla y portacarga para atender todas las solicitudes del mercado.'
-        : 'El kit básico ya está montado. Equilibra capacidad y masa para alcanzar la cuota.'),
+      workshopMessage(level?.number)),
   );
 
   const summary = document.createElement('dl');
@@ -222,6 +223,13 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     actionButton('Iniciar recorrido de 30 segundos', 'primary-action', () =>
       dispatch({ type: 'START_RIDE' })));
   return panel;
+}
+
+function workshopMessage(levelNumber: number | undefined): string {
+  if (levelNumber === 3) return 'Equipa asiento, parrilla y portacarga para atender todas las solicitudes del mercado.';
+  if (levelNumber === 4) return 'La pista dañada exige suspensión y soportes resistentes a los impactos.';
+  if (levelNumber === 5) return 'Hora punta combina todas las capacidades. Prepara una combi completa.';
+  return 'El kit básico ya está montado. Equilibra capacidad y masa para alcanzar la cuota.';
 }
 
 function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {

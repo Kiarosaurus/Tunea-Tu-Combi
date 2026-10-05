@@ -93,8 +93,8 @@ test('recupera un guardado corrupto sin bloquear el menú', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Empezar recorrido' })).toBeEnabled();
 });
 
-test('desbloquea y completa los recorridos de cerro y mercado', async ({ page }) => {
-  test.setTimeout(90_000);
+test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {
+  test.setTimeout(150_000);
   await page.goto(artifactUrl);
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
@@ -135,6 +135,38 @@ test('desbloquea y completa los recorridos de cerro y mercado', async ({ page })
   ]);
   await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
   await expect(page.getByText('Masa máxima').locator('..')).toContainText('kg');
+
+  await page.getByRole('button', { name: 'Elegir nivel' }).click();
+  await expect(page.getByRole('button', { name: /Pista dañada/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Pista dañada/ }).click();
+  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await completeRoute(page, [
+    ['Bajar en Puente', 'S/ 22'],
+    ['Entregar carga en Rompemuelles', 'S/ 52'],
+    ['Entregar carga en Meta', 'S/ 82'],
+  ]);
+
+  await page.getByRole('button', { name: 'Elegir nivel' }).click();
+  await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Hora punta/ }).click();
+  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await completeRoute(page, [
+    ['Bajar en Cruce', 'S/ 25'],
+    ['Entregar carga en Mercado', 'S/ 55'],
+    ['Entregar carga en Óvalo', 'S/ 85'],
+    ['Bajar en Terminal', 'S/ 110'],
+  ]);
+  await page.reload();
+  await expect(page.getByText(/Nivel desbloqueado: 5/)).toBeVisible();
+  const finalRevenue = await page.evaluate(() => {
+    const raw = window.localStorage.getItem('tunea-tu-combi:save:v1');
+    if (!raw) return 0;
+    const saved = JSON.parse(raw) as {
+      completedLevels?: Record<string, { bestRevenue?: number }>;
+    };
+    return saved.completedLevels?.['hora-punta']?.bestRevenue ?? 0;
+  });
+  expect(finalRevenue).toBe(110);
 });
 
 async function completeRoute(page: Page, deliveries: readonly (readonly [string, string])[]): Promise<void> {
