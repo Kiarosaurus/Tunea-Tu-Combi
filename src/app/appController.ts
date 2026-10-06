@@ -28,7 +28,7 @@ import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } f
 import { generateRequests } from '../game/requests';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
 import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
-import { driveForceN } from '../physics/driveModel';
+import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
 import type { PhysicsWorld, WorldSnapshot } from '../physics/world';
 import { AppStateMachine, type AppState } from './appState';
 
@@ -148,6 +148,7 @@ export class AppController {
     if (this.#machine.state === 'PLAYING' && this.#ride) {
       const build = gridBuildStats(gridForModel(this.#model));
       const wheelCount = build.wheelOffsets?.length ?? 0;
+      const wheelPenalty = wheelLayoutPenalty(build.wheelOffsets ?? []);
       const driveForce = driveForceN(this.#world.snapshot(), {
         throttle: this.#throttle,
         braking: this.#braking,
@@ -155,8 +156,12 @@ export class AppController {
         maxEngineForceN: wheelCount > 0 ? build.engineForceN : 0,
         maxSpeedMps: 5.5,
         brakingForceN: wheelCount > 0 ? 3000 : 800,
-        rollingResistanceNPerMps: wheelCount > 0 ? 125 : 900,
-        tractionCoefficient: wheelCount > 0 ? 0.72 : 0.04,
+        rollingResistanceNPerMps: wheelCount > 0
+          ? 125 * wheelPenalty.rollingResistanceMultiplier
+          : 900,
+        tractionCoefficient: wheelCount > 0
+          ? 0.72 * wheelPenalty.tractionMultiplier
+          : 0.04,
       });
       this.#world.applyForce({ x: driveForce, y: 0 });
       try {

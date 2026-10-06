@@ -108,15 +108,19 @@ pieza usada libre se vende por el 70 % redondeado. El kit básico no se vende.
 
 En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
-asegura las piezas conectadas.
+asegura las piezas conectadas. Durante el arrastre, una sombra verde o roja
+previsualiza la huella completa y avisa si la colocación es válida.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa y
-`Espacio` frena. Los pasajeros aparecen junto a la pista y se recogen haciendo
-clic directamente sobre ellos; al llegar a su parada bajan automáticamente y
-liberan el asiento. `E` se conserva como alternativa de teclado y para las
-cargas. `Esc` pausa, `R` reinicia con confirmación y `F1`
+`Espacio` recoge una solicitud cercana; si no hay una disponible, frena. Los
+pasajeros aparecen junto a la pista y también se recogen haciendo clic
+directamente sobre ellos; al llegar a su parada bajan automáticamente y liberan
+el asiento. `E` se conserva como alternativa de teclado y para las cargas.
+`Esc` pausa, `R` reinicia con confirmación y `F1`
 alterna la depuración gráfica. El menú permite reducir el movimiento; la opción
 se conserva en el guardado local.
+La distribución de las ruedas también afecta la conducción: agruparlas hacia
+un solo lado aumenta con fuerza la resistencia al avance y reduce la tracción.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
 incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FIXED_STEP_SECONDS } from '../core/fixedStepClock';
 import { createLevelOneWorld } from './demoWorld';
-import { driveForceN, URBAN_ENGINE } from './driveModel';
+import { driveForceN, URBAN_ENGINE, wheelLayoutPenalty } from './driveModel';
 
 describe('driveForceN', () => {
   it('no entrega fuerza motriz antes de tocar el terreno', () => {
@@ -36,5 +36,14 @@ describe('driveForceN', () => {
     const snapshot = world.snapshot();
     expect(snapshot.suspensionForces.length).toBeGreaterThan(0);
     expect(driveForceN(snapshot, { throttle: 1, braking: false })).toBeGreaterThan(0);
+  });
+
+  it('penaliza con mucha fricción las ruedas agrupadas en un solo lado', () => {
+    const balanced = wheelLayoutPenalty([{ x: -1.05, y: -0.55 }, { x: 1.05, y: -0.55 }]);
+    const clustered = wheelLayoutPenalty([{ x: -1.3, y: -0.55 }, { x: -0.96, y: -0.55 }]);
+    expect(balanced.severity).toBe(0);
+    expect(clustered.severity).toBeGreaterThan(0.8);
+    expect(clustered.rollingResistanceMultiplier).toBeGreaterThan(6);
+    expect(clustered.tractionMultiplier).toBeLessThan(0.45);
   });
 });

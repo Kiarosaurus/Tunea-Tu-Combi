@@ -21,6 +21,34 @@ export const URBAN_ENGINE: DriveParameters = {
   tractionCoefficient: 0.72,
 };
 
+export interface WheelLayoutPenalty {
+  readonly severity: number;
+  readonly rollingResistanceMultiplier: number;
+  readonly tractionMultiplier: number;
+}
+
+export function wheelLayoutPenalty(
+  wheelOffsets: readonly { readonly x: number; readonly y: number }[],
+): WheelLayoutPenalty {
+  if (wheelOffsets.length === 0) {
+    return { severity: 1, rollingResistanceMultiplier: 8, tractionMultiplier: 0.2 };
+  }
+  if (wheelOffsets.length === 1) {
+    return { severity: 0.85, rollingResistanceMultiplier: 6.95, tractionMultiplier: 0.32 };
+  }
+  const xPositions = wheelOffsets.map((wheel) => wheel.x);
+  const spread = Math.max(...xPositions) - Math.min(...xPositions);
+  const averageX = xPositions.reduce((total, value) => total + value, 0) / xPositions.length;
+  const compactness = clamp01((1.2 - spread) / 0.9);
+  const sideBias = clamp01((Math.abs(averageX) - 0.25) / 0.85);
+  const severity = compactness * sideBias;
+  return {
+    severity,
+    rollingResistanceMultiplier: 1 + severity * 7,
+    tractionMultiplier: 1 - severity * 0.7,
+  };
+}
+
 export function driveForceN(
   world: WorldSnapshot,
   input: DriveInput,
@@ -48,4 +76,8 @@ export function driveForceN(
   const wheelForce = Math.max(-tractionLimit, Math.min(tractionLimit,
     desiredEngineForce + desiredBrakeForce));
   return wheelForce + resistance;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }

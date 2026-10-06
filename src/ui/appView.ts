@@ -239,13 +239,18 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   vehicleSection.append(
     textElement('p', 'builder-kicker', 'CUADRÍCULA 10 x 6'),
     textElement('h2', 'builder-title', 'Coloca cada pieza donde quieras'),
-    textElement('p', 'builder-help', 'No hay anclajes predeterminados. Las piezas conectadas a la franja inferior o entre sí permanecen unidas; las aisladas se caerán al iniciar.'),
+    textElement('p', 'builder-help', 'Arrastra una pieza y usa su sombra como previsualización. Las piezas conectadas a la franja inferior o entre sí permanecen unidas; las aisladas se caerán al iniciar.'),
   );
   const selectionMessage = textElement('p', 'selection-message', 'Ninguna pieza seleccionada.');
   selectionMessage.setAttribute('aria-live', 'polite');
   const constructionGrid = document.createElement('div');
   constructionGrid.className = 'construction-grid';
   constructionGrid.setAttribute('aria-label', 'Cuadrícula libre de construcción de la combi');
+  const dragPreview = document.createElement('div');
+  dragPreview.className = 'grid-drag-preview';
+  dragPreview.hidden = true;
+  dragPreview.setAttribute('aria-hidden', 'true');
+  let dragging: { readonly kind: PartKind; readonly placementId?: string } | null = null;
 
   const placedCounts: Partial<Record<PartKind, number>> = {};
   for (const placement of grid) placedCounts[placement.kind] = (placedCounts[placement.kind] ?? 0) + 1;
@@ -255,6 +260,27 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const candidateAt = (kind: PartKind, column: number, row: number): GridPlacement => ({
     id: 'preview', kind, column, row,
   });
+  const hideDragPreview = (): void => {
+    dragPreview.hidden = true;
+    dragPreview.classList.remove('is-valid', 'is-invalid');
+  };
+  const showDragPreview = (column: number, row: number): void => {
+    if (!dragging) return;
+    const footprint = PART_FOOTPRINTS[dragging.kind];
+    const candidate: GridPlacement = {
+      id: dragging.placementId ?? 'preview',
+      kind: dragging.kind,
+      column,
+      row,
+    };
+    const fits = gridPlacementFits(candidate, grid);
+    dragPreview.hidden = false;
+    dragPreview.style.gridColumn = `${column + 1} / span ${footprint.columns}`;
+    dragPreview.style.gridRow = `${row + 1} / span ${footprint.rows}`;
+    dragPreview.classList.toggle('is-valid', fits);
+    dragPreview.classList.toggle('is-invalid', !fits);
+    dragPreview.textContent = partName(dragging.kind);
+  };
   const placeAt = (kind: PartKind, column: number, row: number): void => {
     const candidate = candidateAt(kind, column, row);
     if (!gridPlacementFits(candidate, grid)) {
@@ -308,9 +334,13 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       cell.style.gridColumn = String(column + 1);
       cell.style.gridRow = String(row + 1);
       cell.setAttribute('aria-label', `Celda columna ${column + 1}, fila ${row + 1}`);
-      cell.addEventListener('dragover', (event) => event.preventDefault());
+      cell.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        showDragPreview(column, row);
+      });
       cell.addEventListener('drop', (event) => {
         event.preventDefault();
+        hideDragPreview();
         const placementId = event.dataTransfer?.getData('application/x-tunea-placement');
         if (placementId) {
           moveTo(placementId, column, row);
@@ -344,13 +374,31 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     button.addEventListener('dragover', (event) => {
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      showDragPreview(placement.column, placement.row);
+    });
+    button.addEventListener('drop', (event) => {
+      event.preventDefault();
+      hideDragPreview();
+      if (!dragging) return;
+      if (dragging.placementId) moveTo(dragging.placementId, placement.column, placement.row);
+      else placeAt(dragging.kind, placement.column, placement.row);
     });
     button.addEventListener('dragstart', (event) => {
+      dragging = { kind: placement.kind, placementId: placement.id };
       event.dataTransfer?.setData('application/x-tunea-placement', placement.id);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     });
+    button.addEventListener('dragend', () => {
+      dragging = null;
+      hideDragPreview();
+    });
     constructionGrid.append(button);
   }
+  constructionGrid.append(dragPreview);
+  constructionGrid.addEventListener('dragleave', (event) => {
+    const destination = event.relatedTarget;
+    if (!(destination instanceof Node) || !constructionGrid.contains(destination)) hideDragPreview();
+  });
   vehicleSection.append(selectionMessage, constructionGrid,
     textElement('p', 'grid-legend', 'Franja amarilla = conexión al chasis | Rojo = pieza aislada que se desprenderá'));
 
@@ -383,10 +431,15 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       textElement('span', 'part-card-count', `${available} libre${available === 1 ? '' : 's'} | ${PART_FOOTPRINTS[part.kind].columns}x${PART_FOOTPRINTS[part.kind].rows} | ${part.massKg} kg`),
     );
     button.addEventListener('dragstart', (event) => {
+      dragging = { kind: part.kind };
       event.dataTransfer?.setData('application/x-tunea-part', part.kind);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
       workshopUi.selectedPart = part.kind;
       refreshSelection();
+    });
+    button.addEventListener('dragend', () => {
+      dragging = null;
+      hideDragPreview();
     });
     inventoryButtons.push(button);
     trayGrid.append(button);
@@ -463,7 +516,7 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     hud.append(item);
   }
   panel.append(hud, textElement('p', 'control-hint',
-    'Haz clic directamente en la persona junto a la pista. Al llegar a su parada bajará automáticamente y liberará el asiento.'));
+    'Haz clic directamente en la persona junto a la pista o pulsa Espacio al estar cerca. Al llegar a su parada bajará automáticamente y liberará el asiento.'));
 
   const requests = document.createElement('div');
   requests.className = 'request-list';

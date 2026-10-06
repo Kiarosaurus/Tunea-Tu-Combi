@@ -73,8 +73,23 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await page.getByRole('button', { name: 'Celda columna 5, fila 4' }).click();
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' })).toBeEnabled();
 
-  await page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ })
-    .dragTo(page.getByRole('button', { name: 'Celda columna 1, fila 1' }));
+  const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
+  const targetCell = page.getByRole('button', { name: 'Celda columna 1, fila 1' });
+  await engine.evaluate((source) => {
+    const target = document.querySelector<HTMLElement>('[aria-label="Celda columna 1, fila 1"]');
+    if (!target) throw new Error('No se encontró la celda de prueba.');
+    const dataTransfer = new DataTransfer();
+    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
+    target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
+    Reflect.set(window, '__dragData', dataTransfer);
+  });
+  await expect(page.locator('.grid-drag-preview')).toBeVisible();
+  await expect(page.locator('.grid-drag-preview')).toHaveClass(/is-valid/);
+  await targetCell.evaluate((target) => {
+    const dataTransfer = Reflect.get(window, '__dragData') as DataTransfer;
+    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+    Reflect.deleteProperty(window, '__dragData');
+  });
   await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('1');
 
   expect(remoteRequests).toEqual([]);
@@ -112,7 +127,12 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
   await expect(revenue).toHaveText('S/ 3', { timeout: 15_000 });
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('0 / 1');
-  await clickPassengerOnRoute(page, 'segundo-pasajero');
+  await expect(page.locator('canvas')).toHaveAttribute('data-pickup-request', 'segundo-pasajero',
+    { timeout: 15_000 });
+  await page.keyboard.up('d');
+  await page.keyboard.press('Space');
+  await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
+  await page.keyboard.down('d');
   await expect(revenue).toHaveText('S/ 6', { timeout: 15_000 });
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
   await page.keyboard.up('d');
