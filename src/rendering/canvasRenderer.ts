@@ -2,7 +2,16 @@ import type { AppSnapshot } from '../app/appController';
 import type { Disposable } from '../core/contracts';
 import { add, rotate } from '../core/vector2';
 import { LEVELS } from '../data/levels';
+import type { PartKind } from '../data/parts';
 import { TRANSIT_ROUTE } from '../data/transitRoute';
+import {
+  BUILD_GRID_COLUMNS,
+  BUILD_GRID_ROWS,
+  PART_FOOTPRINTS,
+  gridForModel,
+  securedGridPlacements,
+  type GridPlacement,
+} from '../game/model';
 import { STOP_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
 import type { WorldSnapshot } from '../physics/world';
@@ -98,12 +107,15 @@ function draw(
 ): readonly RequestHitArea[] {
   context.clearRect(0, 0, width, height);
   drawSky(context, width, height, snapshot.selectedLevelId);
+  drawClouds(context, width, height, snapshot.vehicleX);
   drawHills(context, width, height);
   drawCity(context, width, height, snapshot.selectedLevelId);
   drawRouteBoard(context, width, snapshot);
   drawTerrain(context, width, height, world);
+  drawStreetDetails(context, width, height, snapshot.vehicleX);
   const requestHitAreas = drawWaitingPassengers(context, width, height, snapshot, world);
-  drawCombi(context, width, height, world);
+  if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot);
+  drawCombi(context, width, height, snapshot, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
   return requestHitAreas;
 }
@@ -139,7 +151,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   context.fillText(`${TRANSIT_ROUTE.code}  ${TRANSIT_ROUTE.direction}`, left + 18, top + 22);
   context.textAlign = 'right';
   context.font = '900 22px system-ui';
-  context.fillText(`CAPACIDAD ${occupied}/${snapshot.passengerCapacity}`, right - 18, top + 22);
+  context.fillText(`${occupied}/${snapshot.passengerCapacity}`, right - 18, top + 22);
 
   context.lineWidth = 7;
   context.lineCap = 'round';
@@ -177,15 +189,11 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
       passenger.request.destinationStop, passenger.request.massKg, requestFare(passenger.request));
     cardX += 154;
   }
-  if (onboard.length === 0) {
-    context.fillStyle = 'rgba(255,255,255,0.66)';
-    context.fillText('SIN PASAJEROS A BORDO', cardX, cardY + 14);
-  }
   if (nextPassenger) {
     context.textAlign = 'right';
     context.fillStyle = '#fff5d9';
     context.font = '900 13px system-ui';
-    context.fillText(`PROXIMO PASAJE: S/ ${requestFare(nextPassenger.request)}`, right - 18, cardY + 14);
+    context.fillText(`S/ ${requestFare(nextPassenger.request)}`, right - 18, cardY + 14);
   }
   context.restore();
 }
@@ -219,7 +227,7 @@ function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: numb
   context.fillStyle = '#fff5d9';
   context.textAlign = 'left';
   context.font = '800 9px system-ui';
-  context.fillText(`BAJA: ${shortStopName(destination)}`, x + 31, y - 2);
+  context.fillText(shortStopName(destination), x + 31, y - 2);
   context.fillStyle = 'rgba(255,255,255,0.68)';
   context.font = '700 8px system-ui';
   context.fillText(`${massKg} kg  S/ ${fare}`, x + 31, y + 10);
@@ -252,8 +260,7 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
     context.fillStyle = nearby ? '#fff5d9' : 'rgba(255,255,255,0.72)';
     context.font = '800 11px system-ui';
     context.textAlign = 'center';
-    context.fillText(nearby ? `CLIC - S/ ${requestFare(progress.request)}` : `S/ ${requestFare(progress.request)}`,
-      0, -85);
+    context.fillText(`S/ ${requestFare(progress.request)}`, 0, -85);
     context.fillStyle = '#d9a47f';
     context.beginPath();
     context.arc(0, -62, 11, 0, Math.PI * 2);
@@ -311,6 +318,23 @@ function drawSky(context: CanvasRenderingContext2D, width: number, height: numbe
   context.fill();
 }
 
+function drawClouds(context: CanvasRenderingContext2D, width: number, height: number,
+  vehicleX: number): void {
+  const drift = ((vehicleX * 4) % (width + 260) + width + 260) % (width + 260);
+  context.save();
+  context.fillStyle = 'rgba(255, 245, 218, 0.18)';
+  for (let index = 0; index < 4; index += 1) {
+    const x = ((index * 390 - drift * 0.18 + width + 150) % (width + 300)) - 150;
+    const y = height * (0.15 + (index % 2) * 0.1);
+    context.beginPath();
+    context.ellipse(x, y, 72, 18, -0.04, 0, Math.PI * 2);
+    context.ellipse(x - 34, y + 3, 38, 14, 0, 0, Math.PI * 2);
+    context.ellipse(x + 34, y + 4, 42, 13, 0, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+}
+
 function drawHills(context: CanvasRenderingContext2D, width: number, height: number): void {
   context.fillStyle = '#59604f';
   context.beginPath();
@@ -339,6 +363,12 @@ function drawCity(context: CanvasRenderingContext2D, width: number, height: numb
     context.fillStyle = 'rgba(35, 47, 51, 0.45)';
     context.fillRect(x + 10, y + 14, 9, 12);
     context.fillRect(x + 29, y + 14, 9, 12);
+    if (index % 3 === 0) {
+      context.fillStyle = '#274454';
+      context.fillRect(x + buildingWidth * 0.58, y - 10, 16, 10);
+      context.fillStyle = 'rgba(189, 229, 237, 0.7)';
+      context.fillRect(x + buildingWidth * 0.6, y - 8, 12, 4);
+    }
     if (levelId === 'dia-de-mercado' && index % 2 === 0) {
       context.fillStyle = index % 4 === 0 ? '#f2c14e' : '#ef5b3f';
       context.fillRect(x + 3, height * 0.69 - 9, buildingWidth - 10, 9);
@@ -359,6 +389,50 @@ function drawCity(context: CanvasRenderingContext2D, width: number, height: numb
     context.font = 'bold 13px system-ui';
     context.fillText('HORA PUNTA', width * 0.68, height * 0.5);
   }
+}
+
+function drawStreetDetails(context: CanvasRenderingContext2D, width: number, height: number,
+  vehicleX: number): void {
+  const roadTop = height * 0.69;
+  const offset = ((vehicleX * 34) % 150 + 150) % 150;
+  context.save();
+  context.fillStyle = 'rgba(255,255,255,0.34)';
+  for (let x = -offset - 120; x < width + 120; x += 150) {
+    context.fillRect(x, height * 0.84, 76, 5);
+  }
+  context.strokeStyle = '#15252d';
+  context.lineWidth = 5;
+  for (let x = 80 - offset * 0.45; x < width + 220; x += 310) {
+    context.beginPath();
+    context.moveTo(x, roadTop);
+    context.lineTo(x, roadTop - 106);
+    context.lineTo(x + 25, roadTop - 106);
+    context.stroke();
+    context.fillStyle = '#f2c14e';
+    context.beginPath();
+    context.arc(x + 28, roadTop - 105, 8, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: number,
+  snapshot: AppSnapshot): void {
+  const speed = Math.abs(snapshot.speedMps);
+  if (speed < 0.6 || snapshot.state !== 'PLAYING') return;
+  const scale = Math.min(1, speed / 5.5);
+  const baseX = width * 0.73 - worldScale(width, height) * 1.7;
+  const baseY = height * 0.69 - 8;
+  context.save();
+  context.fillStyle = `rgba(242, 193, 78, ${0.12 + scale * 0.16})`;
+  for (let index = 0; index < 6; index += 1) {
+    const phase = (snapshot.vehicleX * 31 + index * 23) % 54;
+    const radius = 3 + ((index * 5) % 7) * scale;
+    context.beginPath();
+    context.arc(baseX - phase - index * 11, baseY - (index % 3) * 7, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
 }
 
 function drawTerrain(
@@ -386,6 +460,7 @@ function drawCombi(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
+  snapshot: AppSnapshot,
   world: WorldSnapshot,
 ): void {
   const pixelsPerMeter = worldScale(width, height);
@@ -426,6 +501,10 @@ function drawCombi(
   context.lineWidth = 6;
   context.stroke();
 
+  const placements = gridForModel(snapshot.game);
+  const securedIds = new Set(securedGridPlacements(placements).map((placement) => placement.id));
+  drawInstalledParts(context, placements, securedIds, x, y, bodyWidth, bodyHeight);
+
   context.fillStyle = '#182027';
   for (const wheel of world.body.wheels) {
     const wheelX = wheel.offset.x * pixelsPerMeter;
@@ -451,6 +530,96 @@ function drawCombi(
     context.fillStyle = '#182027';
   }
   context.restore();
+}
+
+function drawInstalledParts(
+  context: CanvasRenderingContext2D,
+  placements: readonly GridPlacement[],
+  securedIds: ReadonlySet<string>,
+  bodyX: number,
+  bodyY: number,
+  bodyWidth: number,
+  bodyHeight: number,
+): void {
+  const insetX = bodyX + bodyWidth * 0.055;
+  const insetY = bodyY + bodyHeight * 0.06;
+  const innerWidth = bodyWidth * 0.88;
+  const innerHeight = bodyHeight * 0.82;
+  context.save();
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  for (const placement of placements) {
+    if (placement.kind === 'wheel') continue;
+    const footprint = PART_FOOTPRINTS[placement.kind];
+    const x = insetX + (placement.column / BUILD_GRID_COLUMNS) * innerWidth;
+    const y = insetY + (placement.row / BUILD_GRID_ROWS) * innerHeight;
+    const width = Math.max(10, (footprint.columns / BUILD_GRID_COLUMNS) * innerWidth);
+    const height = Math.max(10, (footprint.rows / BUILD_GRID_ROWS) * innerHeight);
+    const secured = securedIds.has(placement.id);
+    context.globalAlpha = secured ? 1 : 0.55;
+    context.strokeStyle = secured ? '#fff5d9' : '#ff8066';
+    context.fillStyle = partColor(placement.kind);
+    context.lineWidth = Math.max(1.5, bodyWidth * 0.008);
+    if (placement.kind === 'engine') {
+      roundedRect(context, x + 2, y + 2, width - 4, height - 4, 4);
+      context.fill();
+      context.stroke();
+      context.fillStyle = '#f2c14e';
+      for (let index = 0; index < 3; index += 1) {
+        context.beginPath();
+        context.arc(x + width * (0.27 + index * 0.23), y + height * 0.48,
+          Math.max(2, height * 0.11), 0, Math.PI * 2);
+        context.fill();
+      }
+    } else if (placement.kind === 'seat') {
+      roundedRect(context, x + width * 0.16, y + height * 0.08,
+        width * 0.48, height * 0.66, 4);
+      context.fill();
+      context.stroke();
+      context.fillRect(x + width * 0.18, y + height * 0.68, width * 0.68, height * 0.2);
+    } else if (placement.kind === 'roofRack') {
+      context.strokeStyle = '#f2c14e';
+      context.lineWidth *= 1.6;
+      context.strokeRect(x + 2, y + height * 0.2, width - 4, height * 0.52);
+      for (let bar = 1; bar < 4; bar += 1) {
+        const barX = x + (width * bar) / 4;
+        context.beginPath();
+        context.moveTo(barX, y + height * 0.2);
+        context.lineTo(barX, y + height * 0.72);
+        context.stroke();
+      }
+    } else if (placement.kind === 'rearCarrier') {
+      roundedRect(context, x + 1, y + height * 0.15, width - 2, height * 0.66, 3);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(x + width, y + height * 0.48);
+      context.lineTo(x + width * 1.22, y + height * 0.48);
+      context.stroke();
+    } else if (placement.kind === 'suspension') {
+      context.strokeStyle = secured ? '#62b7ff' : '#ff8066';
+      context.lineWidth *= 1.5;
+      context.beginPath();
+      context.moveTo(x, y + height * 0.5);
+      for (let step = 1; step <= 8; step += 1) {
+        context.lineTo(x + (width * step) / 8,
+          y + height * (step % 2 === 0 ? 0.25 : 0.75));
+      }
+      context.stroke();
+    } else {
+      context.fillRect(x, y, width, height);
+      context.strokeRect(x, y, width, height);
+    }
+  }
+  context.restore();
+}
+
+function partColor(kind: PartKind): string {
+  const colors: Readonly<Record<PartKind, string>> = {
+    chassis: '#ef5b3f', wheel: '#182027', engine: '#76511d', seat: '#25766c',
+    roofRack: '#f2c14e', rearCarrier: '#72517b', suspension: '#62b7ff',
+  };
+  return colors[kind];
 }
 
 function drawDebug(

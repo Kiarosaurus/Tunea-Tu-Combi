@@ -66,7 +66,8 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       root.dataset.reducedMotion = String(snapshot.reducedMotion);
       routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
         ?? 'CAMPAÑA DE LIMA';
-      debugButton.textContent = snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no';
+      debugButton.textContent = 'Física';
+      debugButton.setAttribute('aria-label', snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no');
       debugButton.setAttribute('aria-pressed', String(snapshot.debugEnabled));
       if (snapshot.state === 'PLAYING' && visibleState === 'PLAYING') {
         updatePlayingScreen(screen, snapshot);
@@ -118,29 +119,30 @@ function createBootScreen(): HTMLElement {
 function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
   const panel = panelElement('menu-panel');
   panel.append(
-    textElement('p', 'eyebrow', 'Proyecto de Computación Gráfica'),
     textElement('h1', 'hero-title', 'Tu ruta. Tu máquina.'),
-    textElement('p', 'hero-copy',
-      'Compra piezas, equilibra tu combi y transporta pasajeros por Lima antes de que termine el turno.'),
-    actionButton('Empezar recorrido', 'primary-action', () =>
-      dispatch({ type: 'OPEN_LEVEL_SELECT' })),
-    textElement('p', 'phase-note', `Billetera: S/ ${snapshot.game.wallet} | Nivel desbloqueado: ${snapshot.game.unlockedLevel}`),
+    textElement('p', 'hero-copy', 'Arma. Maneja. Cobra.'),
   );
+  const play = actionButton('Jugar', 'primary-action', () => dispatch({ type: 'OPEN_LEVEL_SELECT' }));
+  play.setAttribute('aria-label', 'Empezar recorrido');
+  panel.append(play,
+    textElement('p', 'phase-note', `S/ ${snapshot.game.wallet} | Ruta ${snapshot.game.unlockedLevel}`));
   const reset = actionButton('Borrar progreso', 'text-action', () => {
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
   reset.classList.add('reset-action');
-  const demo = actionButton('Cargar perfil de demostración', 'text-action', () => {
+  const demo = actionButton('Demo', 'text-action', () => {
     if (window.confirm('¿Reemplazar el progreso actual por un perfil de demostración?')) {
       dispatch({ type: 'LOAD_DEMO_PROFILE' });
     }
   });
+  demo.setAttribute('aria-label', 'Cargar perfil de demostración');
+  const motion = actionButton(`Movimiento ${snapshot.reducedMotion ? 'suave' : 'normal'}`,
+    'text-action settings-action', () => dispatch({ type: 'TOGGLE_REDUCED_MOTION' }));
+  motion.setAttribute('aria-label', `Movimiento reducido: ${snapshot.reducedMotion ? 'sí' : 'no'}`);
   panel.append(
-    actionButton(`Movimiento reducido: ${snapshot.reducedMotion ? 'sí' : 'no'}`,
-      'text-action settings-action', () => dispatch({ type: 'TOGGLE_REDUCED_MOTION' })),
+    motion,
     demo,
     reset,
-    textElement('p', 'phase-note', 'Créditos: equipo Tunea Tu Combi, Computación Gráfica UTEC.'),
     statusMessage(snapshot.message),
   );
   return panel;
@@ -152,8 +154,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   heading.className = 'section-heading';
   heading.append(
     actionButton('Volver', 'text-action', () => dispatch({ type: 'BACK' })),
-    textElement('p', 'eyebrow', 'Selecciona un recorrido'),
-    textElement('h1', 'section-title', 'Rutas de la ciudad'),
+    textElement('h1', 'section-title', 'Elige ruta'),
   );
 
   const grid = document.createElement('div');
@@ -170,10 +171,8 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
     card.append(
       textElement('span', 'level-number', String(level.number).padStart(2, '0')),
       textElement('strong', 'level-name', level.name),
-      textElement('span', 'level-challenge', level.challenge),
-      textElement('span', 'level-quota', `Cuota S/ ${level.quota}`),
-      textElement('span', 'level-status', isPlayable && isUnlocked ? 'Disponible' : isUnlocked ? 'Desbloqueado, próximamente' : 'Bloqueado'),
-      textElement('span', 'level-best', best ? `Mejor S/ ${best.bestRevenue}` : 'Sin completar'),
+      textElement('span', 'level-quota', `S/ ${level.quota}`),
+      textElement('span', 'level-best', best ? `Récord S/ ${best.bestRevenue}` : ''),
     );
     if (isPlayable) card.addEventListener('click', () =>
       dispatch({ type: 'SELECT_LEVEL', levelId: level.id }));
@@ -190,58 +189,46 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const stats = gridBuildStats(grid);
   const capacity = gridVehicleCapacity(grid);
   const securedIds = new Set(securedGridPlacements(grid).map((item) => item.id));
-  const panel = panelElement('workshop-panel');
-  panel.append(
-    actionButton('Volver a rutas', 'text-action', () => dispatch({ type: 'BACK' })),
-    textElement('p', 'eyebrow', level?.name ?? 'Taller'),
-    textElement('h1', 'section-title', 'Constructor libre'),
-    textElement('p', 'workshop-intro', workshopMessage(level?.number)),
-  );
-
-  const summary = document.createElement('dl');
-  summary.className = 'workshop-summary';
-  summary.append(
-    definitionItem('Billetera', `S/ ${snapshot.game.wallet}`),
-    definitionItem('Pasajeros', String(capacity.passenger)),
-    definitionItem('Carga', String(capacity.roofCargo)),
-    definitionItem('Scooter', String(capacity.scooter)),
-    definitionItem('Cuota', `S/ ${level?.quota ?? 25}`),
-    definitionItem('Masa total', `${stats.massKg} kg`),
-    definitionItem('Potencia', `${stats.engineForceN} N`),
-    definitionItem('Piezas sueltas', String(stats.loosePieces ?? 0)),
-  );
-  panel.append(summary);
-
   const buildIssue = validateGridBuild(grid);
-  const launch = document.createElement('section');
-  launch.className = `launch-panel ${buildIssue ? 'has-issue' : 'is-ready'}`;
-  const wheelCount = stats.wheelOffsets?.length ?? 0;
-  const configuration = stats.engineForceN === 0
-    ? 'Sin motor: podrás iniciar, pero no acelerar.'
-    : wheelCount === 0
-      ? 'Sin ruedas conectadas: podrás iniciar, pero no tendrás tracción.'
-      : `${wheelCount} rueda${wheelCount === 1 ? '' : 's'} conectada${wheelCount === 1 ? '' : 's'} | centro de masa ${stats.centerOfMass.x.toFixed(2)}, ${stats.centerOfMass.y.toFixed(2)} m.`;
-  launch.append(
-    textElement('span', 'launch-indicator', buildIssue ? '!' : 'OK'),
-    textElement('strong', 'launch-title', buildIssue ? 'Falta el único componente obligatorio' : 'Construcción válida'),
-    textElement('span', 'launch-copy', buildIssue ?? configuration),
+  const panel = panelElement('workshop-panel');
+  const toolbar = document.createElement('section');
+  toolbar.className = 'workshop-toolbar';
+  const titleBlock = document.createElement('div');
+  titleBlock.className = 'workshop-title-block';
+  titleBlock.append(
+    actionButton('Rutas', 'workshop-back', () => dispatch({ type: 'BACK' })),
+    textElement('h1', 'workshop-title', 'Arma tu combi'),
+    textElement('span', 'workshop-route', level?.name ?? 'Taller'),
   );
-  const startButton = actionButton('Iniciar recorrido de 30 segundos', 'primary-action launch-action', () =>
+  const quickStats = document.createElement('dl');
+  quickStats.className = 'workshop-quick-stats';
+  quickStats.append(
+    definitionItem('Caja', `S/ ${snapshot.game.wallet}`),
+    definitionItem('Meta', `S/ ${level?.quota ?? 25}`),
+    definitionItem('Asientos', String(capacity.passenger)),
+    definitionItem('Peso', `${stats.massKg} kg`),
+  );
+  const startButton = actionButton('A rodar', 'primary-action launch-action', () =>
     dispatch({ type: 'START_RIDE' }));
+  startButton.setAttribute('aria-label', 'Iniciar recorrido de 30 segundos');
   startButton.disabled = Boolean(buildIssue);
-  launch.append(startButton);
-  panel.append(statusMessage(snapshot.message), launch);
+  toolbar.append(titleBlock, quickStats, startButton);
+  panel.append(toolbar);
+
+  const buildStatus = statusMessage(buildIssue ?? snapshot.message);
+  buildStatus.classList.add('build-status');
+  buildStatus.dataset.tone = buildIssue ? 'warning' : 'ready';
+  panel.append(buildStatus);
 
   const builder = document.createElement('div');
   builder.className = 'workshop-builder';
   const vehicleSection = document.createElement('section');
   vehicleSection.className = 'vehicle-builder';
   vehicleSection.append(
-    textElement('p', 'builder-kicker', 'CUADRÍCULA 10 x 6'),
-    textElement('h2', 'builder-title', 'Coloca cada pieza donde quieras'),
-    textElement('p', 'builder-help', 'Arrastra una pieza y usa su sombra como previsualización. Las piezas conectadas a la franja inferior o entre sí permanecen unidas; las aisladas se caerán al iniciar.'),
+    textElement('p', 'builder-kicker', '10 x 6'),
+    textElement('h2', 'builder-title', 'Arrastra y arma'),
   );
-  const selectionMessage = textElement('p', 'selection-message', 'Ninguna pieza seleccionada.');
+  const selectionMessage = textElement('p', 'selection-message', 'Elige una pieza');
   selectionMessage.setAttribute('aria-live', 'polite');
   const constructionGrid = document.createElement('div');
   constructionGrid.className = 'construction-grid';
@@ -251,6 +238,16 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   dragPreview.hidden = true;
   dragPreview.setAttribute('aria-hidden', 'true');
   let dragging: { readonly kind: PartKind; readonly placementId?: string } | null = null;
+
+  const combiShell = document.createElement('div');
+  combiShell.className = 'builder-combi-shell';
+  combiShell.setAttribute('aria-hidden', 'true');
+  combiShell.append(
+    textElement('span', 'builder-window builder-window-rear', ''),
+    textElement('span', 'builder-window builder-window-front', ''),
+    textElement('span', 'builder-chassis-rail', ''),
+  );
+  constructionGrid.append(combiShell);
 
   const placedCounts: Partial<Record<PartKind, number>> = {};
   for (const placement of grid) placedCounts[placement.kind] = (placedCounts[placement.kind] ?? 0) + 1;
@@ -303,8 +300,8 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const refreshSelection = (feedback?: string): void => {
     const selected = workshopUi.selectedPart;
     selectionMessage.textContent = feedback ?? (selected
-      ? `${partName(selected)} seleccionada (${PART_FOOTPRINTS[selected].columns}x${PART_FOOTPRINTS[selected].rows}). Elige cualquier espacio libre.`
-      : 'Elige una pieza del inventario o toca una ya colocada para moverla.');
+      ? `${partName(selected)}: elige un espacio`
+      : 'Elige una pieza');
     for (const button of inventoryButtons) {
       const isSelected = button.dataset.partKind === selected;
       button.classList.toggle('is-selected', isSelected);
@@ -368,7 +365,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     button.draggable = true;
     button.append(
       textElement('span', 'grid-piece-icon', partIcon(placement.kind)),
-      textElement('span', 'grid-piece-name', partName(placement.kind)),
+      textElement('span', 'grid-piece-name', shortPartName(placement.kind)),
       textElement('span', 'grid-piece-state', secured ? 'CONECTADA' : 'SUELTA'),
     );
     button.addEventListener('dragover', (event) => {
@@ -400,13 +397,13 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     if (!(destination instanceof Node) || !constructionGrid.contains(destination)) hideDragPreview();
   });
   vehicleSection.append(selectionMessage, constructionGrid,
-    textElement('p', 'grid-legend', 'Franja amarilla = conexión al chasis | Rojo = pieza aislada que se desprenderá'));
+    textElement('p', 'grid-legend', 'FIJA    SUELTA'));
 
   const inventory = document.createElement('section');
   inventory.className = 'parts-tray';
   inventory.append(
-    textElement('p', 'builder-kicker', 'INVENTARIO'),
-    textElement('h2', 'builder-title', 'Piezas disponibles'),
+    textElement('p', 'builder-kicker', 'PIEZAS'),
+    textElement('h2', 'builder-title', 'Tu caja'),
   );
   const trayGrid = document.createElement('div');
   trayGrid.className = 'parts-tray-grid';
@@ -427,8 +424,8 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     button.setAttribute('aria-label', `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`);
     button.append(
       textElement('span', 'part-card-icon', partIcon(part.kind)),
-      textElement('strong', 'part-card-name', part.name),
-      textElement('span', 'part-card-count', `${available} libre${available === 1 ? '' : 's'} | ${PART_FOOTPRINTS[part.kind].columns}x${PART_FOOTPRINTS[part.kind].rows} | ${part.massKg} kg`),
+      textElement('strong', 'part-card-name', shortPartName(part.kind)),
+      textElement('span', 'part-card-count', `x${available}`),
     );
     button.addEventListener('dragstart', (event) => {
       dragging = { kind: part.kind };
@@ -450,31 +447,40 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
 
   const shop = document.createElement('section');
   shop.className = 'workshop-section shop-section';
-  shop.append(textElement('h2', 'workshop-heading', 'Tienda de repuestos'));
+  shop.append(textElement('h2', 'workshop-heading', 'Repuestos'));
   const basicInventory = createInitialGameModel().ownedParts;
   for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
     const row = document.createElement('div');
     row.className = 'shop-row';
-    row.append(textElement('span', '',
-      `${part.name} | S/ ${part.price} | ${part.massKg} kg | ${part.effect}`));
-    row.append(actionButton(`Comprar ${part.name}`, 'small-action', () => {
+    row.title = `${part.massKg} kg. ${part.effect}`;
+    row.append(
+      textElement('span', 'shop-part-icon', partIcon(part.kind)),
+      textElement('span', 'shop-part-name', shortPartName(part.kind)),
+    );
+    const buy = actionButton(`S/ ${part.price} +`, 'small-action buy-part', () => {
       workshopUi.selectedPart = part.kind;
       dispatch({ type: 'BUY_PART', kind: part.kind });
-    }));
+    });
+    buy.setAttribute('aria-label', `Comprar ${part.name}`);
+    row.append(buy);
     if (snapshot.game.pendingPurchases[part.kind] > 0) {
-      row.append(actionButton(`Devolver ${part.name}`, 'small-action secondary-action', () =>
-        dispatch({ type: 'RETURN_PURCHASE', kind: part.kind })));
+      const returnButton = actionButton('Devolver', 'small-action secondary-action', () =>
+        dispatch({ type: 'RETURN_PURCHASE', kind: part.kind }));
+      returnButton.setAttribute('aria-label', `Devolver ${part.name}`);
+      row.append(returnButton);
     } else if (snapshot.game.ownedParts[part.kind] > basicInventory[part.kind]) {
-      row.append(actionButton(`Vender ${part.name}`, 'small-action secondary-action', () =>
-        dispatch({ type: 'SELL_PART', kind: part.kind })));
+      const sellButton = actionButton('Vender', 'small-action secondary-action', () =>
+        dispatch({ type: 'SELL_PART', kind: part.kind }));
+      sellButton.setAttribute('aria-label', `Vender ${part.name}`);
+      row.append(sellButton);
     }
     shop.append(row);
   }
 
-  panel.append(shop,
-    textElement('p', 'control-hint', 'Sólo necesitas un asiento para iniciar. Motor, ruedas, posición, conexión y masa determinan lo que ocurrirá en ruta.'),
-    actionButton('Conservar sólo el asiento del conductor', 'small-action secondary-action', () =>
-      dispatch({ type: 'CLEAR_OPTIONAL_PARTS' })));
+  const clearButton = actionButton('Desarmar', 'small-action secondary-action clear-build', () =>
+    dispatch({ type: 'CLEAR_OPTIONAL_PARTS' }));
+  clearButton.setAttribute('aria-label', 'Conservar sólo el asiento del conductor');
+  panel.append(shop, clearButton);
   refreshSelection();
   return panel;
 }
@@ -490,33 +496,45 @@ function partIcon(kind: PartKind): string {
   return icons[kind];
 }
 
-function workshopMessage(levelNumber: number | undefined): string {
-  if (levelNumber === 3) return 'La ruta ofrece pasajeros y carga, pero tú decides qué capacidades construir y dónde ubicarlas.';
-  if (levelNumber === 4) return 'Puedes intentar la pista sin suspensión; la posición y las conexiones decidirán cuánto resiste.';
-  if (levelNumber === 5) return 'Hora punta combina todo, sin imponer una única construcción correcta.';
-  return 'Sólo el asiento del conductor es obligatorio. Todo lo demás - incluidos motor y ruedas - queda a tu criterio.';
+function shortPartName(kind: PartKind): string {
+  const names: Readonly<Record<PartKind, string>> = {
+    chassis: 'Chasis', wheel: 'Rueda', engine: 'Motor', seat: 'Asiento',
+    roofRack: 'Parrilla', rearCarrier: 'Carga', suspension: 'Suspensión',
+  };
+  return names[kind];
 }
 
 function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
-  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   const panel = panelElement('playing-panel');
-  panel.append(
-    textElement('p', 'eyebrow', level?.name ?? 'Recorrido'),
-    textElement('h1', 'playing-title', 'En ruta'),
-  );
+  panel.append(textElement('h1', 'visually-hidden', 'En ruta'));
   const hud = document.createElement('div');
   hud.className = 'ride-hud';
-  for (const [label, key] of [
-    ['Tiempo', 'time'], ['Entregado', 'revenue'], ['Cuota', 'quota'],
-    ['Velocidad', 'speed'], ['Posición', 'position'], ['Pasajeros', 'capacity'],
-  ] as const) {
-    const item = document.createElement('div');
-    item.append(textElement('span', 'hud-label', label), textElement('strong', 'hud-value', ''));
-    item.querySelector('strong')?.setAttribute('data-ui', key);
-    hud.append(item);
-  }
-  panel.append(hud, textElement('p', 'control-hint',
-    'Haz clic directamente en la persona junto a la pista o pulsa Espacio al estar cerca. Al llegar a su parada bajará automáticamente y liberará el asiento.'));
+  const time = textElement('strong', 'ride-time-value', '');
+  time.dataset.ui = 'time';
+  const timeCard = document.createElement('div');
+  timeCard.className = 'ride-time-card';
+  timeCard.append(time, textElement('span', 'ride-time-label', 'TIEMPO'));
+  const revenue = textElement('strong', 'ride-money-value', '');
+  revenue.dataset.ui = 'revenue';
+  const quota = textElement('span', 'ride-money-goal', '');
+  quota.dataset.ui = 'quota';
+  const moneyCard = document.createElement('div');
+  moneyCard.className = 'ride-money-card';
+  moneyCard.append(revenue, quota);
+  const capacity = textElement('strong', 'ride-capacity-value', '');
+  capacity.dataset.ui = 'capacity';
+  const capacityCard = document.createElement('div');
+  capacityCard.className = 'ride-capacity-card';
+  capacityCard.append(textElement('span', 'ride-person-icon', ''), capacity);
+  const speed = textElement('strong', 'ride-speed-value', '');
+  speed.dataset.ui = 'speed';
+  const speedCard = document.createElement('div');
+  speedCard.className = 'ride-speed-card';
+  speedCard.append(speed);
+  const position = textElement('span', 'visually-hidden', '');
+  position.dataset.ui = 'position';
+  hud.append(timeCard, moneyCard, capacityCard, speedCard, position);
+  panel.append(hud);
 
   const requests = document.createElement('div');
   requests.className = 'request-list';
@@ -530,8 +548,11 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const delivery = actionButton('Entregar carga', 'small-action', () =>
     dispatch({ type: 'DELIVER_REQUEST' }));
   delivery.dataset.ui = 'deliver';
-  panel.append(requests, delivery, statusMessage(snapshot.message), createDriveControls(dispatch),
-    actionButton('Pausa', 'small-action secondary-action', () => dispatch({ type: 'PAUSE' })));
+  const pause = actionButton('II', 'ride-pause', () => dispatch({ type: 'PAUSE' }));
+  pause.setAttribute('aria-label', 'Pausa');
+  const message = statusMessage(snapshot.message);
+  message.classList.add('ride-toast');
+  panel.append(requests, delivery, message, createDriveControls(dispatch), pause);
   return panel;
 }
 
@@ -540,7 +561,9 @@ function createDriveControls(dispatch: (action: AppAction) => void): HTMLElement
   controls.className = 'drive-controls';
   controls.setAttribute('aria-label', 'Controles de conducción');
   const holdButton = (label: string, className: string, start: () => void, stop: () => void): HTMLButtonElement => {
-    const button = actionButton(label, `drive-control ${className}`, () => undefined);
+    const visibleLabel = label === 'Reversa' ? 'A' : label === 'Acelerar' ? 'D' : 'STOP';
+    const button = actionButton(visibleLabel, `drive-control ${className}`, () => undefined);
+    button.setAttribute('aria-label', label);
     const begin = (event: Event): void => {
       event.preventDefault();
       if (button.classList.contains('is-active')) return;
@@ -594,6 +617,12 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   const onboardPassengers = ride.requests.filter((item) =>
     item.status === 'onboard' && item.request.kind === 'passenger').length;
   setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
+  const timeCard = screen.querySelector<HTMLElement>('.ride-time-card');
+  if (timeCard) {
+    const progress = Math.max(0, Math.min(1, ride.remainingSeconds / 30));
+    timeCard.style.setProperty('--time-progress', `${progress * 360}deg`);
+    timeCard.classList.toggle('is-urgent', ride.remainingSeconds <= 10);
+  }
   const message = screen.querySelector<HTMLElement>('[role="status"]');
   if (message) message.textContent = snapshot.message;
   for (const progress of ride.requests) {

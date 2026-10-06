@@ -110,6 +110,9 @@ En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
 asegura las piezas conectadas. Durante el arrastre, una sombra verde o roja
 previsualiza la huella completa y avisa si la colocación es válida.
+La cuadrícula está integrada en la silueta lateral de la combi: motor, asientos,
+parrilla, portacarga y suspensión quedan visibles tanto al construir como al
+conducir. La información del taller se concentra en una barra breve de recursos.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa y
 `Espacio` recoge una solicitud cercana; si no hay una disponible, frena. Los
@@ -131,6 +134,8 @@ acredita al ganar; fallar conserva inventario y progreso previo.
 La franja superior resume la ruta CR27 Comas - S.M.P. mediante una selección
 de paraderos limeños, muestra el avance de la combi, la capacidad ocupada y
 fichas mínimas de los pasajeros a bordo con destino, masa y tarifa.
+El cronómetro, dinero, velocidad, pausa y controles de conducción flotan como
+instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
 
 La subida al cerro introduce una pendiente prolongada y tres entregas. El día
 de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,

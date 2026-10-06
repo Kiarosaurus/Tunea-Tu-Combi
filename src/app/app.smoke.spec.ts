@@ -56,10 +56,9 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
 
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'WORKSHOP');
-  await expect(page.getByRole('heading', { name: 'Constructor libre' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Arma tu combi' })).toBeVisible();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
-  await expect(page.getByText(/Sólo el asiento del conductor es obligatorio/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' })).toBeEnabled();
 
   const driverSeat = page.getByRole('button', { name: /Retirar Asiento de columna 4, fila 4/ });
@@ -90,7 +89,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
     target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
     Reflect.deleteProperty(window, '__dragData');
   });
-  await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('1');
+  await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
 
   expect(remoteRequests).toEqual([]);
   expect(errors).toEqual([]);
@@ -140,10 +139,10 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
-  await expect(page.getByText(/Nivel desbloqueado: 2/)).toBeVisible();
+  await expect(page.getByText(/Ruta 2/)).toBeVisible();
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Borrar progreso' }).click();
-  await expect(page.getByText(/Billetera: S\/ 100 \| Nivel desbloqueado: 1/)).toBeVisible();
+  await expect(page.getByText(/S\/ 100 \| Ruta 1/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -162,14 +161,14 @@ test('carga un perfil de demostración y conserva preferencias accesibles', asyn
   await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Cargar perfil de demostración' }).click();
-  await expect(page.getByText(/Nivel desbloqueado: 5/)).toBeVisible();
+  await expect(page.getByText(/Ruta 5/)).toBeVisible();
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
   await page.getByRole('button', { name: /Hora punta/ }).click();
-  await expect(page.getByText('Masa total').locator('..')).toContainText('796 kg');
-  await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('0');
+  await expect(page.getByText('Peso').locator('..')).toContainText('796 kg');
+  await expect(page.locator('.grid-piece.is-loose')).toHaveCount(0);
 });
 
 test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {
@@ -218,7 +217,7 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
   await expect(page.getByText('Piezas perdidas').locator('..')).toContainText('0');
   await page.reload();
-  await expect(page.getByText(/Nivel desbloqueado: 5/)).toBeVisible();
+  await expect(page.getByText(/Ruta 5/)).toBeVisible();
   const finalRevenue = await page.evaluate(() => {
     const raw = window.localStorage.getItem('tunea-tu-combi:save:v1');
     if (!raw) return 0;
