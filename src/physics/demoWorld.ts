@@ -53,10 +53,7 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
   const wheelOffsets = configuredWheels === undefined
     ? [{ x: -1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y },
       { x: 1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }]
-    : configuredWheels.length > 0
-      ? configuredWheels
-      : [{ x: -0.85 - centerOfMass.x, y: -0.58 - centerOfMass.y },
-        { x: 0.85 - centerOfMass.x, y: -0.58 - centerOfMass.y }];
+    : configuredWheels;
   const body: RigidBody = {
     id: `${levelId}-combi`,
     position: { x: 2, y: 2.5 },
@@ -76,8 +73,7 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
     },
     wheels: wheelOffsets.map((offset) => ({
       offset: { ...offset },
-      radius: configuredWheels?.length === 0 ? 0.18 : 0.4,
-      ...(configuredWheels?.length === 0 ? { frictionCoefficient: 0.05 } : {}),
+      radius: 0.4,
       ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}),
     })),
   };

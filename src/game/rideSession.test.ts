@@ -4,6 +4,7 @@ import { applyRideResult, RideSession, RIDE_DURATION_SECONDS } from './rideSessi
 
 describe('primer recorrido', () => {
   const oneSeat = { passenger: 1, roofCargo: 0, scooter: 0 } as const;
+  const allCapacity = { passenger: 1, roofCargo: 1, scooter: 1 } as const;
   const noCapacity = { passenger: 0, roofCargo: 0, scooter: 0 } as const;
 
   it('solo recoge con asiento y acredita al entregar en destino', () => {
@@ -32,12 +33,12 @@ describe('primer recorrido', () => {
     expect(ride.lose(cargo.id)).toBe(false);
   });
 
-  it('mantiene tiempo fijo y termina a los 30 segundos', () => {
+  it('mantiene tiempo fijo y termina a los 60 segundos', () => {
     const ride = new RideSession();
-    for (let index = 0; index < 60; index += 1) ride.advance(0.5, 0);
+    for (let index = 0; index < 120; index += 1) ride.advance(0.5, 0);
     expect(ride.snapshot.remainingSeconds).toBe(0);
     expect(ride.snapshot.finished).toBe(true);
-    expect(RIDE_DURATION_SECONDS).toBe(30);
+    expect(RIDE_DURATION_SECONDS).toBe(60);
   });
 
   it('resume estabilidad y piezas perdidas del intento', () => {
@@ -47,19 +48,26 @@ describe('primer recorrido', () => {
     expect(ride.snapshot.lostPieces).toBe(1);
   });
 
-  it('gana con dos entregas y desbloquea nivel 2', () => {
+  it('gana tres estrellas con todas las entregas y desbloquea nivel 2', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 5, oneSeat);
     ride.deliver(12);
     ride.collect('segundo-pasajero', 15, oneSeat);
     ride.deliver(22);
-    ride.advance(30, 22);
+    const cargo = ride.snapshot.requests.find((item) => item.request.kind !== 'passenger')?.request;
+    expect(cargo).toBeDefined();
+    if (!cargo) return;
+    ride.collect(cargo.id, cargo.originX, allCapacity);
+    ride.deliver(cargo.destinationX);
+    ride.advance(60, cargo.destinationX);
     const initial = createInitialGameModel();
     const result = applyRideResult(initial, ride.snapshot, 'primer-recorrido');
     expect(result.won).toBe(true);
-    expect(result.model.wallet).toBe(106);
+    expect(result.stars).toBe(3);
+    expect(result.model.wallet).toBe(100);
     expect(result.model.unlockedLevel).toBe(2);
-    expect(result.model.completedLevels['primer-recorrido']?.bestDelivered).toBe(2);
+    expect(result.model.completedLevels['primer-recorrido']?.bestDelivered).toBe(3);
+    expect(result.model.completedLevels['primer-recorrido']?.bestStars).toBe(3);
   });
 
   it('baja automáticamente al pasajero y libera el asiento en su destino', () => {
@@ -76,7 +84,7 @@ describe('primer recorrido', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 5, oneSeat);
     ride.deliver(12);
-    ride.advance(30, 12);
+    ride.advance(60, 12);
     const result = applyRideResult(createInitialGameModel(), ride.snapshot, 'primer-recorrido');
     expect(result.won).toBe(false);
     expect(result.model.wallet).toBe(100);

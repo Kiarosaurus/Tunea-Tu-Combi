@@ -11,6 +11,7 @@ import {
   gridForModel,
   gridVehicleCapacity,
   moveGridPart,
+  prepareLevelWorkshop,
   placeGridPart,
   removeGridPart,
   securedGridPlacements,
@@ -26,6 +27,7 @@ import {
 } from '../game/model';
 import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } from '../game/rideSession';
 import { generateRequests } from '../game/requests';
+import { calculateEngineDamage } from '../game/engineDamage';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
 import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
@@ -59,6 +61,7 @@ export type AppAction =
   | { readonly type: 'TOGGLE_REDUCED_MOTION' }
   | { readonly type: 'RESTART_RIDE' }
   | { readonly type: 'TOGGLE_DEBUG' }
+  | { readonly type: 'GO_MENU' }
   | { readonly type: 'BACK' };
 
 export interface AppSnapshot {
@@ -73,6 +76,8 @@ export interface AppSnapshot {
   readonly passengerCapacity: number;
   readonly message: string;
   readonly won: boolean | null;
+  readonly stars: number | null;
+  readonly engineHealthPercent: number;
   readonly saveRecovered: boolean;
 }
 
@@ -90,6 +95,9 @@ export class AppController {
   #braking = false;
   #message = '';
   #won: boolean | null = null;
+  #stars: number | null = null;
+  #engineHealth = 1;
+  #chassisContactActive = false;
   #uiElapsed = 0;
 
   constructor(repository: LocalSaveRepository) {
@@ -126,6 +134,8 @@ export class AppController {
         : vehicleCapacity(this.#model.workshopBuild).passenger,
       message: this.#message,
       won: this.#won,
+      stars: this.#stars,
+      engineHealthPercent: Math.round(this.#engineHealth * 100),
       saveRecovered: this.#repository.recovered,
     };
   }
@@ -153,7 +163,7 @@ export class AppController {
         throttle: this.#throttle,
         braking: this.#braking,
       }, {
-        maxEngineForceN: wheelCount > 0 ? build.engineForceN : 0,
+        maxEngineForceN: wheelCount > 0 ? build.engineForceN * this.#engineHealth : 0,
         maxSpeedMps: 5.5,
         brakingForceN: wheelCount > 0 ? 3000 : 800,
         rollingResistanceNPerMps: wheelCount > 0
@@ -170,6 +180,18 @@ export class AppController {
           if (this.#ride.lose(requestId)) this.#message = 'Una carga se desprendió por el impacto.';
         }
         const world = this.#world.snapshot();
+        const chassisContacts = world.contacts.filter((contact) => contact.wheelIndex < 0);
+        const damage = calculateEngineDamage({
+          health: this.#engineHealth,
+          durationSeconds,
+          chassisContact: chassisContacts.length > 0,
+          contactStarted: chassisContacts.length > 0 && !this.#chassisContactActive,
+          maximumNormalImpulseNs: Math.max(0, ...chassisContacts.map((contact) => contact.normalImpulseNs)),
+          speedMps: world.body.velocity.x,
+        });
+        this.#engineHealth = damage.health;
+        this.#chassisContactActive = chassisContacts.length > 0;
+        if (damage.impactApplied) this.#message = `Motor al ${Math.round(this.#engineHealth * 100)} %.`;
         const arrivals = this.#ride.deliverArrived(world.body.position.x);
         for (const arrival of arrivals) this.#world.detachPayload(arrival.requestId);
         if (arrivals.length > 0) {
@@ -299,6 +321,9 @@ export class AppController {
         this.#save();
         this.#notify();
         return;
+      case 'GO_MENU':
+        this.#goMenu();
+        return;
       case 'BACK':
         this.#goBack();
         return;
@@ -310,7 +335,9 @@ export class AppController {
     if (!level) throw new Error(`Nivel desconocido: ${levelId}`);
     if (level.number > this.#model.unlockedLevel) throw new Error('Este nivel está bloqueado.');
     this.#selectedLevelId = level.id;
+    this.#model = prepareLevelWorkshop(this.#model, level.buildBudget, level.defaultExtras);
     this.#message = '';
+    this.#save();
     this.#machine.transition('WORKSHOP');
   }
 
@@ -355,6 +382,9 @@ export class AppController {
     this.#throttle = 0;
     this.#braking = false;
     this.#won = null;
+    this.#stars = null;
+    this.#engineHealth = 1;
+    this.#chassisContactActive = false;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
     this.#message = stats.loosePieces
       ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión se desprendieron al arrancar.`
@@ -411,7 +441,10 @@ export class AppController {
     const result = applyRideResult(this.#model, this.#ride.snapshot, this.#selectedLevelId);
     this.#model = result.model;
     this.#won = result.won;
-    this.#message = result.won ? 'Cuota alcanzada.' : 'No alcanzaste la cuota. Puedes reintentar.';
+    this.#stars = result.stars;
+    this.#message = result.stars === 3
+      ? 'Tres estrellas. Nueva ruta desbloqueada.'
+      : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`;
     this.#throttle = 0;
     this.#save();
     this.#machine.transition('RESULTS');
@@ -455,6 +488,19 @@ export class AppController {
       return;
     }
     throw new Error(`No se puede volver desde ${this.#machine.state}`);
+  }
+
+  #goMenu(): void {
+    if (this.#machine.state === 'MENU' || this.#machine.state === 'BOOT') return;
+    this.#ride = null;
+    this.#selectedLevelId = null;
+    this.#world = createDemoWorld();
+    this.#throttle = 0;
+    this.#braking = false;
+    this.#engineHealth = 1;
+    this.#chassisContactActive = false;
+    this.#message = '';
+    this.#machine.transition('MENU');
   }
 
   #save(): void {

@@ -113,6 +113,8 @@ export function isSaveDataV1(value: unknown): value is SaveDataV1 {
     isRecord(result) &&
     isNonnegativeInteger(result.bestRevenue) &&
     isNonnegativeInteger(result.bestDelivered) &&
+    (result.bestStars === undefined ||
+      (isNonnegativeInteger(result.bestStars) && result.bestStars <= 3)) &&
     typeof result.bestSeed === 'string',
   );
 }

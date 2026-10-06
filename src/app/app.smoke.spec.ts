@@ -24,6 +24,11 @@ async function clickPassengerOnRoute(page: Page, requestId: string): Promise<voi
   await page.keyboard.down('d');
 }
 
+async function dismissGoals(page: Page): Promise<void> {
+  await expect(page.getByRole('dialog', { name: 'Metas de estrellas' })).toBeVisible();
+  await page.getByRole('button', { name: 'Listo' }).click();
+}
+
 test('abre offline y recorre menú, niveles y taller sin errores', async ({ page }) => {
   const errors: string[] = [];
   const remoteRequests: string[] = [];
@@ -55,22 +60,24 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeDisabled();
 
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
+  await dismissGoals(page);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'WORKSHOP');
   await expect(page.getByRole('heading', { name: 'Arma tu combi' })).toBeVisible();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
-  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
 
   const driverSeat = page.getByRole('button', { name: /Retirar Asiento de columna 4, fila 4/ });
   await driverSeat.scrollIntoViewIfNeeded();
   const scrollBeforeChange = await page.evaluate(() => window.scrollY);
   await driverSeat.click();
+  await page.getByRole('button', { name: /Retirar Asiento/ }).click();
   await expect.poll(() => page.evaluate(() => window.scrollY))
     .toBeGreaterThanOrEqual(Math.max(0, scrollBeforeChange - 10));
-  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeDisabled();
   await expect(page.getByText('Falta el asiento del conductor.')).toBeVisible();
   await page.getByRole('button', { name: 'Celda columna 5, fila 4' }).click();
-  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
 
   const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
   const targetCell = page.getByRole('button', { name: 'Celda columna 1, fila 1' });
@@ -90,6 +97,11 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
     Reflect.deleteProperty(window, '__dragData');
   });
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
+  await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
+  await expect(page.locator('canvas')).toHaveAttribute('data-missing-requirement', 'seat');
+  await expect.poll(async () => Number(await page.locator('canvas').getAttribute('data-engine-health')),
+    { timeout: 5_000 }).toBeLessThanOrEqual(75);
 
   expect(remoteRequests).toEqual([]);
   expect(errors).toEqual([]);
@@ -102,9 +114,8 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await page.goto(artifactUrl);
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
-  await page.getByRole('button', { name: 'Comprar Asiento' }).click();
-  await page.getByRole('button', { name: 'Celda columna 1, fila 4' }).click();
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   const accelerate = page.getByRole('button', { name: 'Acelerar' });
   await accelerate.dispatchEvent('pointerdown', { pointerType: 'touch', button: 0 });
@@ -117,13 +128,12 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   page.once('dialog', async (dialog) => dialog.accept());
   await page.keyboard.press('r');
-  await expect(page.locator('[data-ui="time"]')).toHaveText('30 s');
+  await expect(page.locator('[data-ui="time"]')).toHaveText('60 s');
 
   await page.keyboard.down('d');
   const revenue = page.locator('[data-ui="revenue"]');
   await expect(page.locator('canvas')).toHaveAttribute('data-route-code', 'CR27');
   await clickPassengerOnRoute(page, 'primer-pasajero');
-  await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
   await expect(revenue).toHaveText('S/ 3', { timeout: 15_000 });
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('0 / 1');
   await expect(page.locator('canvas')).toHaveAttribute('data-pickup-request', 'segundo-pasajero',
@@ -133,16 +143,18 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
   await page.keyboard.down('d');
   await expect(revenue).toHaveText('S/ 6', { timeout: 15_000 });
+  await interactUntil(page, revenue, 'S/ 8');
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
   await page.keyboard.up('d');
-  await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
+  await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
   await expect(page.getByText(/Ruta 2/)).toBeVisible();
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Borrar progreso' }).click();
-  await expect(page.getByText(/S\/ 100 \| Ruta 1/)).toBeVisible();
+  await expect(page.getByText(/^Ruta 1$/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -176,43 +188,38 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await page.goto(artifactUrl);
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
-  await page.getByRole('button', { name: 'Comprar Asiento' }).click();
-  await page.getByRole('button', { name: 'Celda columna 1, fila 4' }).click();
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 6']);
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
+  await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 8']);
 
   await page.getByRole('button', { name: 'Elegir nivel' }).click();
   await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeEnabled();
   await page.getByRole('button', { name: /Subida al cerro/ }).click();
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 9']);
 
   await page.getByRole('button', { name: 'Elegir nivel' }).click();
   await expect(page.getByRole('button', { name: /Día de mercado/ })).toBeEnabled();
   await page.getByRole('button', { name: /Día de mercado/ }).click();
-  for (const [buy, cell] of [
-    ['Comprar Parrilla de techo', 'Celda columna 4, fila 3'],
-    ['Comprar Portacarga posterior', 'Celda columna 9, fila 5'],
-    ['Comprar Suspensión reforzada', 'Celda columna 4, fila 6'],
-  ] as const) {
-    await page.getByRole('button', { name: buy }).click();
-    await page.getByRole('button', { name: cell }).click();
-  }
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, ['S/ 3', 'S/ 7', 'S/ 10']);
-  await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
   await expect(page.getByText('Masa máxima').locator('..')).toContainText('kg');
 
   await page.getByRole('button', { name: 'Elegir nivel' }).click();
   await expect(page.getByRole('button', { name: /Pista dañada/ })).toBeEnabled();
   await page.getByRole('button', { name: /Pista dañada/ }).click();
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, ['S/ 3', 'S/ 7', 'S/ 11']);
 
   await page.getByRole('button', { name: 'Elegir nivel' }).click();
   await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
   await page.getByRole('button', { name: /Hora punta/ }).click();
-  await page.getByRole('button', { name: 'Iniciar recorrido de 30 segundos' }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 9', 'S/ 12']);
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
   await expect(page.getByText('Piezas perdidas').locator('..')).toContainText('0');
@@ -236,5 +243,5 @@ async function completeRoute(page: Page, revenues: readonly string[]): Promise<v
   for (const expectedRevenue of revenues) await interactUntil(page, revenue, expectedRevenue);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
   await page.keyboard.up('d');
-  await expect(page.getByRole('heading', { name: 'Cuota alcanzada' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
 }

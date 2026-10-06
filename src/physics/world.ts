@@ -408,7 +408,6 @@ function resolveContact(
 function validateBody(body: RigidBody): void {
   if (!(body.massKg > 0) || !(body.inertiaKgM2 > 0) ||
     !Number.isFinite(body.massKg) || !Number.isFinite(body.inertiaKgM2) ||
-    body.wheels.length === 0 ||
     body.wheels.some((wheel) => !(wheel.radius > 0) ||
       ![wheel.offset.x, wheel.offset.y, wheel.radius].every(Number.isFinite) ||
       (wheel.frictionCoefficient !== undefined &&
@@ -424,7 +423,7 @@ function validateBody(body: RigidBody): void {
     (body.centerOfMassOffset !== undefined &&
       ![body.centerOfMassOffset.x, body.centerOfMassOffset.y].every(Number.isFinite)) ||
     !isFiniteBody(body)) {
-    throw new Error('El cuerpo físico requiere masa, inercia, ruedas y valores finitos.');
+    throw new Error('El cuerpo físico requiere masa, inercia y valores finitos.');
   }
 }
 

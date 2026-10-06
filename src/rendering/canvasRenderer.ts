@@ -9,6 +9,7 @@ import {
   BUILD_GRID_ROWS,
   PART_FOOTPRINTS,
   gridForModel,
+  gridVehicleCapacity,
   securedGridPlacements,
   type GridPlacement,
 } from '../game/model';
@@ -88,6 +89,11 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.contactCount = String(world.contacts.length);
       canvas.dataset.routeCode = snapshot.state === 'PLAYING' ? TRANSIT_ROUTE.code : '';
       canvas.dataset.passengerCapacity = String(snapshot.passengerCapacity);
+      canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
+      const hasWaitingPassenger = snapshot.ride?.requests.some((progress) =>
+        progress.status === 'waiting' && progress.request.kind === 'passenger') ?? false;
+      canvas.dataset.missingRequirement = snapshot.state === 'PLAYING' && hasWaitingPassenger &&
+        snapshot.passengerCapacity === 0 ? 'seat' : '';
       resize();
     },
     destroy(): void {
@@ -245,6 +251,9 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
   const colors: Readonly<Record<string, string>> = {
     azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
   };
+  const capacity = gridVehicleCapacity(gridForModel(snapshot.game));
+  const onboardPassengers = snapshot.ride.requests.filter((item) =>
+    item.status === 'onboard' && item.request.kind === 'passenger').length;
   for (const progress of snapshot.ride.requests) {
     if (progress.status !== 'waiting' || progress.request.kind !== 'passenger') continue;
     const groundY = terrainHeightAt(world.terrain, progress.request.originX);
@@ -261,6 +270,22 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
     context.font = '800 11px system-ui';
     context.textAlign = 'center';
     context.fillText(`S/ ${requestFare(progress.request)}`, 0, -85);
+    if (capacity.passenger <= onboardPassengers) {
+      context.fillStyle = '#fff5d9';
+      context.strokeStyle = '#182027';
+      context.lineWidth = 3;
+      roundedRect(context, -54, -139, 108, 27, 10);
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(-8, -113);
+      context.lineTo(2, -105);
+      context.lineTo(8, -113);
+      context.fill();
+      context.fillStyle = '#182027';
+      context.font = '900 9px system-ui';
+      context.fillText(capacity.passenger === 0 ? 'FALTA ASIENTO' : 'SIN ESPACIO', 0, -121);
+    }
     context.fillStyle = '#d9a47f';
     context.beginPath();
     context.arc(0, -62, 11, 0, Math.PI * 2);
@@ -471,6 +496,11 @@ function drawCombi(
   const y = -1.03 * pixelsPerMeter + centerOfMass.y * pixelsPerMeter;
   const center = worldToScreen(world.body.position, world, width, height);
 
+  if (snapshot.engineHealthPercent < 100) {
+    drawEngineSmoke(context, center.x + bodyWidth * 0.22, center.y - bodyHeight * 0.68,
+      snapshot.engineHealthPercent, snapshot.reducedMotion);
+  }
+
   context.save();
   context.translate(center.x, center.y);
   context.rotate(-world.body.angleRadians);
@@ -528,6 +558,23 @@ function drawCombi(
     );
     context.stroke();
     context.fillStyle = '#182027';
+  }
+  context.restore();
+}
+
+function drawEngineSmoke(context: CanvasRenderingContext2D, x: number, y: number,
+  healthPercent: number, reducedMotion: boolean): void {
+  const severity = 1 - healthPercent / 100;
+  const phase = reducedMotion ? 0 : performance.now() / 520;
+  context.save();
+  for (let index = 0; index < 6; index += 1) {
+    const rise = index * (10 + severity * 8);
+    const drift = Math.sin(phase + index * 1.4) * (5 + index * 2);
+    const radius = 5 + index * 2 + severity * 5;
+    context.fillStyle = `rgba(36, 44, 47, ${Math.max(0.05, 0.34 - index * 0.045)})`;
+    context.beginPath();
+    context.arc(x + drift, y - rise, radius, 0, Math.PI * 2);
+    context.fill();
   }
   context.restore();
 }
@@ -741,7 +788,7 @@ function worldToScreen(
 ): { x: number; y: number } {
   const pixelsPerMeter = worldScale(width, height);
   return {
-    x: width * 0.73 + (point.x - world.body.position.x) * pixelsPerMeter,
+    x: width * 0.5 + (point.x - world.body.position.x) * pixelsPerMeter,
     y: height * 0.69 - point.y * pixelsPerMeter,
   };
 }

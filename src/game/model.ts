@@ -47,6 +47,7 @@ export interface CompletedLevel {
   readonly bestRevenue: number;
   readonly bestDelivered: number;
   readonly bestSeed: string;
+  readonly bestStars?: number;
 }
 
 export interface GameModel {
@@ -138,6 +139,37 @@ export function createDemoGameModel(): GameModel {
     ],
     unlockedLevel: 5,
     completedLevels: {},
+  };
+}
+
+export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
+  defaultExtras: readonly PartKind[] = []): GameModel {
+  if (!Number.isInteger(buildBudget) || buildBudget < 0) {
+    throw new Error('El presupuesto del nivel debe ser un entero no negativo.');
+  }
+  const base = createInitialGameModel();
+  const canonicalExtras: Readonly<Partial<Record<PartKind, GridPlacement>>> = {
+    seat: { id: 'seat-2', kind: 'seat', column: 4, row: 3 },
+    roofRack: { id: 'roofRack-1', kind: 'roofRack', column: 2, row: 2 },
+    rearCarrier: { id: 'rearCarrier-1', kind: 'rearCarrier', column: 0, row: 4 },
+    suspension: { id: 'suspension-1', kind: 'suspension', column: 4, row: 5 },
+  };
+  const ownedParts = { ...base.ownedParts };
+  const workshopGrid = [...gridForModel(base)];
+  for (const kind of defaultExtras) {
+    const placement = canonicalExtras[kind];
+    if (!placement || workshopGrid.some((item) => item.kind === kind && item.id === placement.id)) continue;
+    ownedParts[kind] += 1;
+    workshopGrid.push(placement);
+  }
+  return {
+    ...base,
+    wallet: buildBudget,
+    ownedParts,
+    workshopGrid,
+    workshopBuild: gridToLegacyBuild(workshopGrid),
+    unlockedLevel: model.unlockedLevel,
+    completedLevels: model.completedLevels,
   };
 }
 

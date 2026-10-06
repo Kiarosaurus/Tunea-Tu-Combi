@@ -4,7 +4,7 @@ import { generateLevelOneRequests, requestFare, type RideRequest } from './reque
 
 export type { RideRequest } from './requests';
 
-export const RIDE_DURATION_SECONDS = 30;
+export const RIDE_DURATION_SECONDS = 60;
 export const LEVEL_ONE_FINISH_X = 31;
 export const STOP_RADIUS_METERS = 2.5;
 
@@ -160,27 +160,32 @@ export function applyRideResult(
   model: GameModel,
   ride: RideSnapshot,
   levelId: string,
-): { readonly model: GameModel; readonly won: boolean } {
+): { readonly model: GameModel; readonly won: boolean; readonly stars: number } {
   if (!ride.finished) throw new Error('El recorrido todavía no terminó.');
   const level = LEVELS.find((candidate) => candidate.id === levelId);
   if (!level) throw new Error('Nivel desconocido.');
-  const won = ride.deliveredRevenue >= level.quota;
+  const stars = level.starGoals.filter((goal) => ride.deliveredRevenue >= goal).length;
+  const won = stars === 3;
   const previous = model.completedLevels[levelId];
-  const completedLevels = won ? {
+  const completedLevels = stars > 0 ? {
     ...model.completedLevels,
     [levelId]: {
       bestRevenue: Math.max(previous?.bestRevenue ?? 0, ride.deliveredRevenue),
       bestDelivered: Math.max(previous?.bestDelivered ?? 0, ride.deliveredCount),
       bestSeed: ride.seed,
+      bestStars: Math.max(previous?.bestStars ?? 0, stars),
     },
   } : model.completedLevels;
   return {
     won,
+    stars,
     model: {
       ...model,
-      wallet: model.wallet + (won ? ride.deliveredRevenue : 0),
+      wallet: model.wallet,
       pendingPurchases: emptyInventory(),
-      unlockedLevel: won ? Math.max(model.unlockedLevel, Math.min(level.number + 1, LEVELS.length)) : model.unlockedLevel,
+      unlockedLevel: stars === 3
+        ? Math.max(model.unlockedLevel, Math.min(level.number + 1, LEVELS.length))
+        : model.unlockedLevel,
       completedLevels,
     },
   };

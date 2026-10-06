@@ -6,7 +6,6 @@ import {
   BUILD_GRID_COLUMNS,
   BUILD_GRID_ROWS,
   PART_FOOTPRINTS,
-  createInitialGameModel,
   gridBuildStats,
   gridForModel,
   gridPlacementFits,
@@ -36,10 +35,17 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   const header = document.createElement('header');
   header.className = 'topbar';
   const routeBadge = textElement('span', 'prototype-badge', 'PRIMER RECORRIDO');
+  const homeButton = actionButton('Menú', 'topbar-home', () => {
+    const activeState = root.dataset.appState;
+    if ((activeState === 'PLAYING' || activeState === 'PAUSED') &&
+      !window.confirm('¿Salir de este recorrido?')) return;
+    dispatch({ type: 'GO_MENU' });
+  });
   header.append(
     textElement('span', 'brand-mark', 'TTC'),
     textElement('span', 'brand-name', 'Tunea Tu Combi'),
     routeBadge,
+    homeButton,
   );
   const debugButton = actionButton('Depuración: no', 'debug-action', () =>
     dispatch({ type: 'TOGGLE_DEBUG' }));
@@ -57,7 +63,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   root.replaceChildren(canvas, shade, header, screen, footer);
 
   let visibleState = '';
-  const workshopUi: WorkshopUiState = { selectedPart: null };
+  const workshopUi: WorkshopUiState = { selectedPart: null, dismissedGoals: new Set<string>() };
   return {
     canvas,
     render(snapshot): void {
@@ -69,6 +75,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       debugButton.textContent = 'Física';
       debugButton.setAttribute('aria-label', snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no');
       debugButton.setAttribute('aria-pressed', String(snapshot.debugEnabled));
+      homeButton.hidden = snapshot.state === 'MENU' || snapshot.state === 'BOOT';
       if (snapshot.state === 'PLAYING' && visibleState === 'PLAYING') {
         updatePlayingScreen(screen, snapshot);
         return;
@@ -91,6 +98,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
 
 interface WorkshopUiState {
   selectedPart: PartKind | null;
+  readonly dismissedGoals: Set<string>;
 }
 
 function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
@@ -125,7 +133,7 @@ function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) =
   const play = actionButton('Jugar', 'primary-action', () => dispatch({ type: 'OPEN_LEVEL_SELECT' }));
   play.setAttribute('aria-label', 'Empezar recorrido');
   panel.append(play,
-    textElement('p', 'phase-note', `S/ ${snapshot.game.wallet} | Ruta ${snapshot.game.unlockedLevel}`));
+    textElement('p', 'phase-note', `Ruta ${snapshot.game.unlockedLevel}`));
   const reset = actionButton('Borrar progreso', 'text-action', () => {
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
@@ -191,6 +199,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const securedIds = new Set(securedGridPlacements(grid).map((item) => item.id));
   const buildIssue = validateGridBuild(grid);
   const panel = panelElement('workshop-panel');
+  const goalsPopup = document.createElement('section');
   const toolbar = document.createElement('section');
   toolbar.className = 'workshop-toolbar';
   const titleBlock = document.createElement('div');
@@ -203,17 +212,47 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const quickStats = document.createElement('dl');
   quickStats.className = 'workshop-quick-stats';
   quickStats.append(
-    definitionItem('Caja', `S/ ${snapshot.game.wallet}`),
+    definitionItem('Presupuesto', `S/ ${snapshot.game.wallet}`),
     definitionItem('Meta', `S/ ${level?.quota ?? 25}`),
     definitionItem('Asientos', String(capacity.passenger)),
     definitionItem('Peso', `${stats.massKg} kg`),
   );
+  const goalsButton = actionButton('Metas', 'workshop-goals-button', () => {
+    goalsPopup.hidden = false;
+  });
   const startButton = actionButton('A rodar', 'primary-action launch-action', () =>
     dispatch({ type: 'START_RIDE' }));
-  startButton.setAttribute('aria-label', 'Iniciar recorrido de 30 segundos');
+  startButton.setAttribute('aria-label', 'Iniciar recorrido de 60 segundos');
   startButton.disabled = Boolean(buildIssue);
-  toolbar.append(titleBlock, quickStats, startButton);
+  toolbar.append(titleBlock, quickStats, goalsButton, startButton);
   panel.append(toolbar);
+
+  goalsPopup.className = 'game-popup goals-popup';
+  goalsPopup.hidden = !level || workshopUi.dismissedGoals.has(level.id);
+  goalsPopup.setAttribute('role', 'dialog');
+  goalsPopup.setAttribute('aria-modal', 'true');
+  goalsPopup.setAttribute('aria-label', 'Metas de estrellas');
+  const goalsCard = document.createElement('div');
+  goalsCard.className = 'game-popup-card';
+  goalsCard.append(textElement('h2', 'popup-title', 'Tu misión'));
+  const goals = document.createElement('div');
+  goals.className = 'star-goals';
+  for (const [index, goal] of (level?.starGoals ?? [0, 0, 0]).entries()) {
+    const item = document.createElement('div');
+    item.append(
+      textElement('span', 'goal-star', String(index + 1)),
+      textElement('strong', 'goal-value', `S/ ${goal}`),
+    );
+    goals.append(item);
+  }
+  const closeGoals = actionButton('Listo', 'primary-action popup-action', () => {
+    if (level) workshopUi.dismissedGoals.add(level.id);
+    goalsPopup.hidden = true;
+  });
+  goalsCard.append(goals,
+    textElement('p', 'popup-note', '3 estrellas abren la siguiente ruta.'), closeGoals);
+  goalsPopup.append(goalsCard);
+  panel.append(goalsPopup);
 
   const buildStatus = statusMessage(buildIssue ?? snapshot.message);
   buildStatus.classList.add('build-status');
@@ -381,11 +420,13 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       else placeAt(dragging.kind, placement.column, placement.row);
     });
     button.addEventListener('dragstart', (event) => {
+      button.classList.add('is-dragging');
       dragging = { kind: placement.kind, placementId: placement.id };
       event.dataTransfer?.setData('application/x-tunea-placement', placement.id);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     });
     button.addEventListener('dragend', () => {
+      button.classList.remove('is-dragging');
       dragging = null;
       hideDragPreview();
     });
@@ -411,23 +452,32 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     const available = freeCount(part.kind);
     const button = actionButton('', 'part-card', () => {
       if (available < 1) {
-        refreshSelection(`No quedan ${part.name.toLowerCase()} libres.`);
+        if (snapshot.game.wallet < part.price) {
+          refreshSelection('Presupuesto insuficiente.');
+          return;
+        }
+        workshopUi.selectedPart = part.kind;
+        dispatch({ type: 'BUY_PART', kind: part.kind });
         return;
       }
       workshopUi.selectedPart = workshopUi.selectedPart === part.kind ? null : part.kind;
       refreshSelection();
     });
     button.dataset.partKind = part.kind;
-    button.disabled = available < 1;
+    button.disabled = available < 1 && snapshot.game.wallet < part.price;
     button.draggable = available > 0;
     button.setAttribute('aria-pressed', 'false');
-    button.setAttribute('aria-label', `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`);
+    button.setAttribute('aria-label', available > 0
+      ? `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`
+      : `Comprar ${part.name} por S/ ${part.price}`);
     button.append(
       textElement('span', 'part-card-icon', partIcon(part.kind)),
       textElement('strong', 'part-card-name', shortPartName(part.kind)),
-      textElement('span', 'part-card-count', `x${available}`),
+      textElement('span', `part-card-count ${available > 0 ? '' : 'is-price'}`,
+        available > 0 ? `x${available}` : `S/ ${part.price}`),
     );
     button.addEventListener('dragstart', (event) => {
+      button.classList.add('is-dragging');
       dragging = { kind: part.kind };
       event.dataTransfer?.setData('application/x-tunea-part', part.kind);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
@@ -435,6 +485,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       refreshSelection();
     });
     button.addEventListener('dragend', () => {
+      button.classList.remove('is-dragging');
       dragging = null;
       hideDragPreview();
     });
@@ -445,42 +496,10 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   builder.append(vehicleSection, inventory);
   panel.append(builder);
 
-  const shop = document.createElement('section');
-  shop.className = 'workshop-section shop-section';
-  shop.append(textElement('h2', 'workshop-heading', 'Repuestos'));
-  const basicInventory = createInitialGameModel().ownedParts;
-  for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
-    const row = document.createElement('div');
-    row.className = 'shop-row';
-    row.title = `${part.massKg} kg. ${part.effect}`;
-    row.append(
-      textElement('span', 'shop-part-icon', partIcon(part.kind)),
-      textElement('span', 'shop-part-name', shortPartName(part.kind)),
-    );
-    const buy = actionButton(`S/ ${part.price} +`, 'small-action buy-part', () => {
-      workshopUi.selectedPart = part.kind;
-      dispatch({ type: 'BUY_PART', kind: part.kind });
-    });
-    buy.setAttribute('aria-label', `Comprar ${part.name}`);
-    row.append(buy);
-    if (snapshot.game.pendingPurchases[part.kind] > 0) {
-      const returnButton = actionButton('Devolver', 'small-action secondary-action', () =>
-        dispatch({ type: 'RETURN_PURCHASE', kind: part.kind }));
-      returnButton.setAttribute('aria-label', `Devolver ${part.name}`);
-      row.append(returnButton);
-    } else if (snapshot.game.ownedParts[part.kind] > basicInventory[part.kind]) {
-      const sellButton = actionButton('Vender', 'small-action secondary-action', () =>
-        dispatch({ type: 'SELL_PART', kind: part.kind }));
-      sellButton.setAttribute('aria-label', `Vender ${part.name}`);
-      row.append(sellButton);
-    }
-    shop.append(row);
-  }
-
   const clearButton = actionButton('Desarmar', 'small-action secondary-action clear-build', () =>
     dispatch({ type: 'CLEAR_OPTIONAL_PARTS' }));
   clearButton.setAttribute('aria-label', 'Conservar sólo el asiento del conductor');
-  panel.append(shop, clearButton);
+  panel.append(clearButton);
   refreshSelection();
   return panel;
 }
@@ -531,9 +550,14 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const speedCard = document.createElement('div');
   speedCard.className = 'ride-speed-card';
   speedCard.append(speed);
+  const engine = textElement('strong', 'ride-engine-value', '');
+  engine.dataset.ui = 'engine';
+  const engineCard = document.createElement('div');
+  engineCard.className = 'ride-engine-card';
+  engineCard.append(textElement('span', 'ride-engine-icon', 'M'), engine);
   const position = textElement('span', 'visually-hidden', '');
   position.dataset.ui = 'position';
-  hud.append(timeCard, moneyCard, capacityCard, speedCard, position);
+  hud.append(timeCard, moneyCard, capacityCard, speedCard, engineCard, position);
   panel.append(hud);
 
   const requests = document.createElement('div');
@@ -614,12 +638,13 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   setUiText(screen, 'quota', `S/ ${level?.quota ?? 0}`);
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
+  setUiText(screen, 'engine', `${snapshot.engineHealthPercent} %`);
   const onboardPassengers = ride.requests.filter((item) =>
     item.status === 'onboard' && item.request.kind === 'passenger').length;
   setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
   const timeCard = screen.querySelector<HTMLElement>('.ride-time-card');
   if (timeCard) {
-    const progress = Math.max(0, Math.min(1, ride.remainingSeconds / 30));
+    const progress = Math.max(0, Math.min(1, ride.remainingSeconds / (level?.durationSeconds ?? 60)));
     timeCard.style.setProperty('--time-progress', `${progress * 360}deg`);
     timeCard.classList.toggle('is-urgent', ride.remainingSeconds <= 10);
   }
@@ -632,7 +657,8 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
     button.hidden = progress.status !== 'waiting';
     button.disabled = Math.abs(snapshot.vehicleX - progress.request.originX) > STOP_RADIUS_METERS;
     const action = progress.request.kind === 'passenger' ? 'Recoger pasajero' : 'Recoger carga';
-    button.textContent = `${action} en ${progress.request.originStop} (S/ ${requestFare(progress.request)})`;
+    button.textContent = `${action}: S/ ${requestFare(progress.request)}`;
+    button.title = `${progress.request.originStop} a ${progress.request.destinationStop}`;
   }
   const delivery = screen.querySelector<HTMLButtonElement>('[data-ui="deliver"]');
   if (delivery) {
@@ -658,6 +684,7 @@ function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement 
     actionButton('Volver al taller', 'text-action', () => {
       if (window.confirm('¿Terminar este intento sin acreditar ingresos?')) dispatch({ type: 'ABORT_RIDE' });
     }),
+    actionButton('Menú', 'text-action', () => dispatch({ type: 'GO_MENU' })),
   );
   return panel;
 }
@@ -667,9 +694,16 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const panel = panelElement('results-panel');
   panel.append(
     textElement('p', 'eyebrow', 'Resultado del turno'),
-    textElement('h1', 'section-title', snapshot.won ? 'Cuota alcanzada' : 'Inténtalo otra vez'),
+    textElement('h1', 'section-title', snapshot.won ? 'Ruta completa' : 'Por poco'),
     textElement('p', 'hero-copy', snapshot.message),
   );
+  const stars = document.createElement('div');
+  stars.className = 'result-stars';
+  stars.setAttribute('aria-label', `${snapshot.stars ?? 0} de 3 estrellas`);
+  for (let index = 1; index <= 3; index += 1) {
+    stars.append(textElement('span',
+      `result-star ${index <= (snapshot.stars ?? 0) ? 'is-earned' : ''}`, String(index)));
+  }
   const summary = document.createElement('dl');
   summary.className = 'workshop-summary';
   summary.append(
@@ -680,10 +714,11 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     definitionItem('Estabilidad', `${snapshot.ride?.stabilityPercent ?? 0} %`),
     definitionItem('Piezas perdidas', String(snapshot.ride?.lostPieces ?? 0)),
   );
-  panel.append(summary,
+  panel.append(stars, summary,
     textElement('p', 'phase-note', `Semilla: ${snapshot.ride?.seed ?? 'sin intento'}`),
     actionButton('Volver al taller', 'primary-action', () => dispatch({ type: 'RETRY' })),
-    actionButton('Elegir nivel', 'text-action', () => dispatch({ type: 'BACK' })));
+    actionButton('Elegir nivel', 'text-action', () => dispatch({ type: 'BACK' })),
+    actionButton('Menú', 'text-action', () => dispatch({ type: 'GO_MENU' })));
   return panel;
 }
 

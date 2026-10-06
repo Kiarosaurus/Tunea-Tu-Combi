@@ -208,6 +208,7 @@ describe('flujo vertical del primer recorrido', () => {
     const noSeat = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(noSeat);
     noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
+    noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
     noSeat.dispatch({ type: 'START_RIDE' });
     expect(noSeat.snapshot.state).toBe('WORKSHOP');
     expect(noSeat.snapshot.message).toBe('Falta el asiento del conductor.');
@@ -216,6 +217,20 @@ describe('flujo vertical del primer recorrido', () => {
     const recovered = new AppController(new LocalSaveRepository(storage));
     expect(recovered.snapshot.saveRecovered).toBe(true);
     expect(recovered.snapshot.game.wallet).toBe(100);
+  });
+
+  it('daña el motor al caer con la carrocería sobre la pista', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    const wheelIds = gridForModel(controller.snapshot.game)
+      .filter((placement) => placement.kind === 'wheel')
+      .map((placement) => placement.id);
+    for (const placementId of wheelIds) {
+      controller.dispatch({ type: 'REMOVE_GRID_PART', placementId });
+    }
+    controller.dispatch({ type: 'START_RIDE' });
+    for (let index = 0; index < 180; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.engineHealthPercent).toBeLessThanOrEqual(75);
   });
 
   it('carga el perfil de demostración y conserva movimiento reducido', () => {
@@ -238,10 +253,10 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
-    expect(controller.snapshot.ride?.remainingSeconds).toBeLessThan(30);
+    expect(controller.snapshot.ride?.remainingSeconds).toBeLessThan(60);
     controller.dispatch({ type: 'RESTART_RIDE' });
     expect(controller.snapshot.state).toBe('PLAYING');
-    expect(controller.snapshot.ride?.remainingSeconds).toBe(30);
+    expect(controller.snapshot.ride?.remainingSeconds).toBe(60);
     expect(controller.snapshot.vehicleX).toBe(2);
   });
 });

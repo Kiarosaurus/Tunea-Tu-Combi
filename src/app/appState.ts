@@ -14,10 +14,10 @@ const ALLOWED_TRANSITIONS: Readonly<Record<AppState, readonly AppState[]>> = {
   BOOT: ['MENU'],
   MENU: ['LEVEL_SELECT'],
   LEVEL_SELECT: ['MENU', 'WORKSHOP'],
-  WORKSHOP: ['LEVEL_SELECT', 'PLAYING'],
-  PLAYING: ['PAUSED', 'RESULTS'],
-  PAUSED: ['PLAYING', 'RESULTS'],
-  RESULTS: ['WORKSHOP', 'LEVEL_SELECT'],
+  WORKSHOP: ['MENU', 'LEVEL_SELECT', 'PLAYING'],
+  PLAYING: ['MENU', 'PAUSED', 'RESULTS'],
+  PAUSED: ['MENU', 'PLAYING', 'RESULTS'],
+  RESULTS: ['MENU', 'WORKSHOP', 'LEVEL_SELECT'],
 };
 
 export class AppStateMachine {

@@ -6,8 +6,8 @@ el curso de Computación Gráfica de UTEC. El producto usa Canvas 2D y genera un
 
 La versión actual incluye TypeScript estricto, una máquina de estados explícita,
 un núcleo físico propio, taller modular y cinco recorridos jugables de
-30 segundos. Los siete tipos de piezas están definidos como datos y los niveles
-se desbloquean en orden. El menú ofrece un perfil de demostración independiente
+60 segundos. Los siete tipos de piezas están definidos como datos y los niveles
+se desbloquean con tres estrellas. El menú ofrece un perfil de demostración independiente
 para revisar inmediatamente toda la campaña.
 
 ## Requisitos
@@ -100,11 +100,10 @@ La máquina de estados declara el flujo completo previsto:
 BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 ```
 
-La interfaz recorre todos esos estados durante la campaña completa. El jugador empieza
-con chasis, dos ruedas, motor y asiento del conductor. Para transportar un
-pasajero debe comprar y colocar un segundo asiento en el taller. Las compras
-recientes pueden devolverse por su precio completo antes del recorrido; una
-pieza usada libre se vende por el 70 % redondeado. El kit básico no se vende.
+La interfaz recorre todos esos estados durante la campaña completa. Cada nivel
+entrega una combi base, piezas incluidas y un presupuesto fijo de construcción.
+Para transportar un pasajero hace falta un segundo asiento. Las compras se hacen
+desde la misma paleta de piezas y pueden devolverse antes del recorrido.
 
 En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
@@ -128,14 +127,16 @@ Las solicitudes se generan de forma reproducible desde la semilla del intento:
 incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su
 unión. Las tarifas están entre S/ 1 y S/ 5 según la distancia y las cuotas se
-ajustan a esos importes. Solo el dinero entregado al destino se
-acredita al ganar; fallar conserva inventario y progreso previo.
+ajustan a esos importes. El dinero entregado determina hasta tres estrellas,
+pero no se acumula como saldo. Solo tres estrellas desbloquean la siguiente ruta.
 
 La franja superior resume la ruta CR27 Comas - S.M.P. mediante una selección
 de paraderos limeños, muestra el avance de la combi, la capacidad ocupada y
 fichas mínimas de los pasajeros a bordo con destino, masa y tarifa.
-El cronómetro, dinero, velocidad, pausa y controles de conducción flotan como
+El cronómetro, dinero, velocidad, salud del motor, pausa y controles de conducción flotan como
 instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
+Los golpes de carrocería contra la pista reducen el motor en 25 % y el arrastre
+continuo lo deteriora gradualmente; el humo comunica el daño sin abrir otro panel.
 
 La subida al cerro introduce una pendiente prolongada y tres entregas. El día
 de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,
