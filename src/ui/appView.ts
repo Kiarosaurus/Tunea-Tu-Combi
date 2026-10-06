@@ -15,7 +15,6 @@ import {
   type GridPlacement,
 } from '../game/model';
 import { STOP_RADIUS_METERS } from '../game/rideSession';
-import { requestFare } from '../game/requests';
 
 export interface AppView extends Disposable {
   readonly canvas: HTMLCanvasElement;
@@ -560,15 +559,6 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   hud.append(timeCard, moneyCard, capacityCard, speedCard, engineCard, position);
   panel.append(hud);
 
-  const requests = document.createElement('div');
-  requests.className = 'request-list';
-  for (const progress of snapshot.ride?.requests ?? []) {
-    if (progress.request.kind === 'passenger') continue;
-    const button = actionButton('', 'request-action', () =>
-      dispatch({ type: 'COLLECT_REQUEST', requestId: progress.request.id }));
-    button.dataset.requestId = progress.request.id;
-    requests.append(button);
-  }
   const delivery = actionButton('Entregar carga', 'small-action', () =>
     dispatch({ type: 'DELIVER_REQUEST' }));
   delivery.dataset.ui = 'deliver';
@@ -576,7 +566,7 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   pause.setAttribute('aria-label', 'Pausa');
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
-  panel.append(requests, delivery, message, createDriveControls(dispatch), pause);
+  panel.append(delivery, message, createDriveControls(dispatch), pause);
   return panel;
 }
 
@@ -639,8 +629,7 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
   setUiText(screen, 'engine', `${snapshot.engineHealthPercent} %`);
-  const onboardPassengers = ride.requests.filter((item) =>
-    item.status === 'onboard' && item.request.kind === 'passenger').length;
+  const onboardPassengers = ride.requests.filter((item) => item.status === 'onboard').length;
   setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
   const timeCard = screen.querySelector<HTMLElement>('.ride-time-card');
   if (timeCard) {
@@ -650,16 +639,6 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   }
   const message = screen.querySelector<HTMLElement>('[role="status"]');
   if (message) message.textContent = snapshot.message;
-  for (const progress of ride.requests) {
-    const button = [...screen.querySelectorAll<HTMLButtonElement>('[data-request-id]')]
-      .find((candidate) => candidate.dataset.requestId === progress.request.id);
-    if (!button) continue;
-    button.hidden = progress.status !== 'waiting';
-    button.disabled = Math.abs(snapshot.vehicleX - progress.request.originX) > STOP_RADIUS_METERS;
-    const action = progress.request.kind === 'passenger' ? 'Recoger pasajero' : 'Recoger carga';
-    button.textContent = `${action}: S/ ${requestFare(progress.request)}`;
-    button.title = `${progress.request.originStop} a ${progress.request.destinationStop}`;
-  }
   const delivery = screen.querySelector<HTMLButtonElement>('[data-ui="deliver"]');
   if (delivery) {
     const onboard = ride.requests.find((item) =>
@@ -712,7 +691,7 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     definitionItem('Solicitudes', String(snapshot.ride?.deliveredCount ?? 0)),
     definitionItem('Masa máxima', `${snapshot.ride?.maximumPayloadMassKg ?? 0} kg`),
     definitionItem('Estabilidad', `${snapshot.ride?.stabilityPercent ?? 0} %`),
-    definitionItem('Piezas perdidas', String(snapshot.ride?.lostPieces ?? 0)),
+    definitionItem('Piezas sueltas', String(snapshot.ride?.lostPieces ?? 0)),
   );
   panel.append(stars, summary,
     textElement('p', 'phase-note', `Semilla: ${snapshot.ride?.seed ?? 'sin intento'}`),

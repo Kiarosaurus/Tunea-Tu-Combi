@@ -104,6 +104,12 @@ export class RideSession {
     if (availableCapacity < progress.request.requiredCapacity || onboardCount >= availableCapacity) {
       throw new Error(capacityError(progress.request.kind));
     }
+    const occupiedSeats = this.#requests.filter((item) => item.status === 'onboard').length;
+    if (occupiedSeats >= capacity.passenger) {
+      throw new Error(progress.request.kind === 'passenger'
+        ? 'Falta un asiento libre para este pasajero.'
+        : 'Falta un asiento libre para quien acompaña la carga.');
+    }
     this.#setStatus(requestId, 'onboard');
     const payloadMass = this.#requests.filter((item) => item.status === 'onboard')
       .reduce((total, item) => total + item.request.massKg, 0);

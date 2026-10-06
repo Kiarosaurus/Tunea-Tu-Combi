@@ -387,7 +387,7 @@ export class AppController {
     this.#chassisContactActive = false;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
     this.#message = stats.loosePieces
-      ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión se desprendieron al arrancar.`
+      ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión cay${stats.loosePieces === 1 ? 'ó' : 'eron'} dentro y no funciona${stats.loosePieces === 1 ? '' : 'n'}.`
       : stats.engineForceN === 0
         ? 'La ruta inició, pero sin motor la combi no puede acelerar.'
         : wheelCount === 0

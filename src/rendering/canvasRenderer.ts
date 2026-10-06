@@ -114,14 +114,14 @@ function draw(
   context.clearRect(0, 0, width, height);
   drawSky(context, width, height, snapshot.selectedLevelId);
   drawClouds(context, width, height, snapshot.vehicleX);
-  drawHills(context, width, height);
-  drawCity(context, width, height, snapshot.selectedLevelId);
+  drawHills(context, width, height, snapshot.vehicleX);
+  drawCity(context, width, height, snapshot.selectedLevelId, snapshot.vehicleX);
   drawRouteBoard(context, width, snapshot);
   drawTerrain(context, width, height, world);
   drawStreetDetails(context, width, height, snapshot.vehicleX);
-  const requestHitAreas = drawWaitingPassengers(context, width, height, snapshot, world);
   if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot);
   drawCombi(context, width, height, snapshot, world);
+  const requestHitAreas = drawWaitingRequests(context, width, height, snapshot, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
   return requestHitAreas;
 }
@@ -129,12 +129,9 @@ function draw(
 function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   snapshot: AppSnapshot): void {
   if (snapshot.state !== 'PLAYING' || !snapshot.ride) return;
-  const occupied = snapshot.ride.requests.filter((item) =>
-    item.status === 'onboard' && item.request.kind === 'passenger').length;
-  const onboard = snapshot.ride.requests.filter((item) =>
-    item.status === 'onboard' && item.request.kind === 'passenger');
-  const nextPassenger = snapshot.ride.requests.find((item) =>
-    item.status === 'waiting' && item.request.kind === 'passenger');
+  const onboard = snapshot.ride.requests.filter((item) => item.status === 'onboard');
+  const occupied = onboard.length;
+  const nextRequest = snapshot.ride.requests.find((item) => item.status === 'waiting');
   const level = LEVELS.find((item) => item.id === snapshot.selectedLevelId);
   const progress = Math.max(0, Math.min(1, snapshot.vehicleX / (level?.finishX ?? 1)));
   const left = width >= 760 ? Math.max(400, width * 0.43) : 16;
@@ -191,15 +188,15 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   let cardX = left + 18;
   const cardY = top + 93;
   for (const passenger of onboard) {
-    drawPassengerCard(context, cardX, cardY, passenger.request.visualVariant,
+    drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
       passenger.request.destinationStop, passenger.request.massKg, requestFare(passenger.request));
     cardX += 154;
   }
-  if (nextPassenger) {
+  if (nextRequest) {
     context.textAlign = 'right';
     context.fillStyle = '#fff5d9';
     context.font = '900 13px system-ui';
-    context.fillText(`S/ ${requestFare(nextPassenger.request)}`, right - 18, cardY + 14);
+    context.fillText(`S/ ${requestFare(nextRequest.request)}`, right - 18, cardY + 14);
   }
   context.restore();
 }
@@ -244,7 +241,7 @@ function shortStopName(name: string): string {
   return name.length > 13 ? `${name.slice(0, 12)}.` : name;
 }
 
-function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number, height: number,
+function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, height: number,
   snapshot: AppSnapshot, world: WorldSnapshot): readonly RequestHitArea[] {
   if (snapshot.state !== 'PLAYING' || !snapshot.ride) return [];
   const hits: RequestHitArea[] = [];
@@ -252,10 +249,9 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
     azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
   };
   const capacity = gridVehicleCapacity(gridForModel(snapshot.game));
-  const onboardPassengers = snapshot.ride.requests.filter((item) =>
-    item.status === 'onboard' && item.request.kind === 'passenger').length;
+  const onboardRequests = snapshot.ride.requests.filter((item) => item.status === 'onboard');
   for (const progress of snapshot.ride.requests) {
-    if (progress.status !== 'waiting' || progress.request.kind !== 'passenger') continue;
+    if (progress.status !== 'waiting') continue;
     const groundY = terrainHeightAt(world.terrain, progress.request.originX);
     const point = worldToScreen({ x: progress.request.originX, y: groundY }, world, width, height);
     if (point.x < -60 || point.x > width + 60) continue;
@@ -270,11 +266,15 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
     context.font = '800 11px system-ui';
     context.textAlign = 'center';
     context.fillText(`S/ ${requestFare(progress.request)}`, 0, -85);
-    if (capacity.passenger <= onboardPassengers) {
+    const occupiedSupport = onboardRequests.filter((item) =>
+      item.request.kind === progress.request.kind).length;
+    const missingRequirement = requestRequirement(progress.request.kind, capacity,
+      onboardRequests.length, occupiedSupport);
+    if (missingRequirement) {
       context.fillStyle = '#fff5d9';
       context.strokeStyle = '#182027';
       context.lineWidth = 3;
-      roundedRect(context, -54, -139, 108, 27, 10);
+      roundedRect(context, -61, -139, 122, 27, 10);
       context.fill();
       context.stroke();
       context.beginPath();
@@ -284,32 +284,98 @@ function drawWaitingPassengers(context: CanvasRenderingContext2D, width: number,
       context.fill();
       context.fillStyle = '#182027';
       context.font = '900 9px system-ui';
-      context.fillText(capacity.passenger === 0 ? 'FALTA ASIENTO' : 'SIN ESPACIO', 0, -121);
+      context.fillText(missingRequirement, 0, -121);
     }
-    context.fillStyle = '#d9a47f';
-    context.beginPath();
-    context.arc(0, -62, 11, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = colors[progress.request.visualVariant] ?? '#62b7ff';
-    context.lineWidth = 12;
-    context.lineCap = 'round';
-    context.beginPath();
-    context.moveTo(0, -48);
-    context.lineTo(0, -20);
-    context.moveTo(0, -40);
-    context.lineTo(-15, -27);
-    context.moveTo(0, -40);
-    context.lineTo(15, -27);
-    context.moveTo(0, -20);
-    context.lineTo(-11, -2);
-    context.moveTo(0, -20);
-    context.lineTo(11, -2);
-    context.stroke();
+    const personX = progress.request.kind === 'passenger' ? 0 : -22;
+    drawWaitingPerson(context, personX,
+      colors[progress.request.attendantVariant] ?? '#62b7ff');
+    if (progress.request.kind !== 'passenger') {
+      drawWaitingCargo(context, progress.request.kind, progress.request.visualVariant, 24, -4);
+    }
     context.restore();
     if (nearby) hits.push({ requestId: progress.request.id,
-      x: point.x - 34, y: point.y - 108, width: 68, height: 108 });
+      x: point.x - 58, y: point.y - 108, width: 116, height: 108 });
   }
   return hits;
+}
+
+function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
+  capacity: ReturnType<typeof gridVehicleCapacity>, occupiedSeats: number,
+  occupiedSupport: number): string | null {
+  if (kind === 'roofCargo' && (capacity.roofCargo === 0 || occupiedSupport >= capacity.roofCargo)) {
+    return capacity.roofCargo === 0 ? 'FALTA PARRILLA' : 'SOPORTE OCUPADO';
+  }
+  if (kind === 'scooter' && (capacity.scooter === 0 || occupiedSupport >= capacity.scooter)) {
+    return capacity.scooter === 0 ? 'FALTA PORTACARGA' : 'SOPORTE OCUPADO';
+  }
+  if (capacity.passenger <= occupiedSeats) {
+    return capacity.passenger === 0 ? 'FALTA ASIENTO' : 'SIN ESPACIO';
+  }
+  return null;
+}
+
+function drawWaitingPerson(context: CanvasRenderingContext2D, x: number, clothing: string): void {
+  context.fillStyle = '#d9a47f';
+  context.beginPath();
+  context.arc(x, -62, 11, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = clothing;
+  context.lineWidth = 12;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(x, -48);
+  context.lineTo(x, -20);
+  context.moveTo(x, -40);
+  context.lineTo(x - 14, -27);
+  context.moveTo(x, -40);
+  context.lineTo(x + 13, -29);
+  context.moveTo(x, -20);
+  context.lineTo(x - 10, -2);
+  context.moveTo(x, -20);
+  context.lineTo(x + 10, -2);
+  context.stroke();
+}
+
+function drawWaitingCargo(context: CanvasRenderingContext2D,
+  kind: 'roofCargo' | 'scooter', variant: string, x: number, groundY: number): void {
+  context.save();
+  context.translate(x, groundY);
+  if (kind === 'scooter') {
+    context.strokeStyle = '#d6d8d5';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(-10, -5, 8, 0, Math.PI * 2);
+    context.arc(18, -5, 8, 0, Math.PI * 2);
+    context.moveTo(-10, -5);
+    context.lineTo(2, -24);
+    context.lineTo(17, -5);
+    context.moveTo(2, -24);
+    context.lineTo(15, -25);
+    context.stroke();
+    context.fillStyle = '#ef5b3f';
+    roundedRect(context, -2, -31, 17, 8, 3);
+    context.fill();
+  } else if (variant === 'sacos') {
+    context.fillStyle = '#d0bd86';
+    context.beginPath();
+    context.ellipse(6, -16, 18, 19, -0.16, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = '#76511d';
+    context.lineWidth = 3;
+    context.stroke();
+  } else {
+    context.fillStyle = variant === 'canastas' ? '#f2c14e' : '#b86b45';
+    roundedRect(context, -13, -35, 38, 31, 4);
+    context.fill();
+    context.strokeStyle = '#76511d';
+    context.lineWidth = 3;
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-10, -20);
+    context.lineTo(22, -20);
+    context.stroke();
+  }
+  context.restore();
 }
 
 function terrainHeightAt(terrain: WorldSnapshot['terrain'], x: number): number {
@@ -345,12 +411,15 @@ function drawSky(context: CanvasRenderingContext2D, width: number, height: numbe
 
 function drawClouds(context: CanvasRenderingContext2D, width: number, height: number,
   vehicleX: number): void {
-  const drift = ((vehicleX * 4) % (width + 260) + width + 260) % (width + 260);
+  const spacing = 390;
+  const patternWidth = spacing * 4;
+  const drift = positiveModulo(vehicleX * 3, patternWidth);
   context.save();
   context.fillStyle = 'rgba(255, 245, 218, 0.18)';
-  for (let index = 0; index < 4; index += 1) {
-    const x = ((index * 390 - drift * 0.18 + width + 150) % (width + 300)) - 150;
-    const y = height * (0.15 + (index % 2) * 0.1);
+  const firstIndex = Math.floor((drift - 150) / spacing);
+  for (let index = firstIndex; index * spacing - drift < width + 150; index += 1) {
+    const x = index * spacing - drift;
+    const y = height * (0.15 + (positiveModulo(index, 2)) * 0.1);
     context.beginPath();
     context.ellipse(x, y, 72, 18, -0.04, 0, Math.PI * 2);
     context.ellipse(x - 34, y + 3, 38, 14, 0, 0, Math.PI * 2);
@@ -360,66 +429,53 @@ function drawClouds(context: CanvasRenderingContext2D, width: number, height: nu
   context.restore();
 }
 
-function drawHills(context: CanvasRenderingContext2D, width: number, height: number): void {
-  context.fillStyle = '#59604f';
-  context.beginPath();
-  context.moveTo(0, height * 0.62);
-  context.lineTo(width * 0.2, height * 0.32);
-  context.lineTo(width * 0.38, height * 0.61);
-  context.lineTo(width * 0.58, height * 0.27);
-  context.lineTo(width * 0.83, height * 0.62);
-  context.lineTo(width, height * 0.4);
-  context.lineTo(width, height);
-  context.lineTo(0, height);
-  context.closePath();
-  context.fill();
+function drawHills(context: CanvasRenderingContext2D, width: number, height: number,
+  vehicleX: number): void {
+  drawHillLayer(context, width, height, vehicleX * 5, '#485661', 0.5, 0.22, 760);
+  drawHillLayer(context, width, height, vehicleX * 9, '#59604f', 0.62, 0.31, 620);
 }
 
 function drawCity(context: CanvasRenderingContext2D, width: number, height: number,
-  levelId: string | null): void {
-  const buildingWidth = Math.max(42, width / 15);
+  levelId: string | null, vehicleX: number): void {
+  const buildingWidth = Math.max(48, Math.min(86, width / 13));
+  const patternWidth = buildingWidth * 5;
+  const offset = positiveModulo(vehicleX * 15, patternWidth);
   const colors = ['#d36d42', '#d9a449', '#b84d41', '#d0bd86', '#86524b'];
-  for (let index = 0; index < 17; index += 1) {
-    const x = index * buildingWidth - buildingWidth * 0.4;
-    const buildingHeight = height * (0.12 + ((index * 7) % 5) * 0.025);
+  const firstIndex = Math.floor((offset - buildingWidth) / buildingWidth);
+  for (let index = firstIndex; index * buildingWidth - offset < width + buildingWidth; index += 1) {
+    const patternIndex = positiveModulo(index, 5);
+    const x = index * buildingWidth - offset;
+    const buildingHeight = height * (0.12 + ((patternIndex * 7) % 5) * 0.025);
     const y = height * 0.69 - buildingHeight;
-    context.fillStyle = colors[index % colors.length] ?? '#d36d42';
+    context.fillStyle = colors[patternIndex] ?? '#d36d42';
     context.fillRect(x, y, buildingWidth - 4, buildingHeight);
     context.fillStyle = 'rgba(35, 47, 51, 0.45)';
     context.fillRect(x + 10, y + 14, 9, 12);
     context.fillRect(x + 29, y + 14, 9, 12);
-    if (index % 3 === 0) {
+    if (patternIndex % 3 === 0) {
       context.fillStyle = '#274454';
       context.fillRect(x + buildingWidth * 0.58, y - 10, 16, 10);
       context.fillStyle = 'rgba(189, 229, 237, 0.7)';
       context.fillRect(x + buildingWidth * 0.6, y - 8, 12, 4);
     }
-    if (levelId === 'dia-de-mercado' && index % 2 === 0) {
-      context.fillStyle = index % 4 === 0 ? '#f2c14e' : '#ef5b3f';
+    if (levelId === 'dia-de-mercado' && patternIndex % 2 === 0) {
+      context.fillStyle = patternIndex % 4 === 0 ? '#f2c14e' : '#ef5b3f';
       context.fillRect(x + 3, height * 0.69 - 9, buildingWidth - 10, 9);
     }
   }
-  if (levelId === 'subida-al-cerro') {
-    context.fillStyle = '#f2c14e';
-    context.font = 'bold 14px system-ui';
-    context.fillText('MIRADOR', width * 0.72, height * 0.46);
-  }
   if (levelId === 'pista-danada') {
     context.fillStyle = '#ff726a';
-    context.fillRect(width * 0.12, height * 0.61, 42, 8);
-    context.fillRect(width * 0.67, height * 0.59, 52, 8);
-  }
-  if (levelId === 'hora-punta') {
-    context.fillStyle = '#f2c14e';
-    context.font = 'bold 13px system-ui';
-    context.fillText('HORA PUNTA', width * 0.68, height * 0.5);
+    for (let x = -positiveModulo(vehicleX * 15, 430); x < width + 80; x += 430) {
+      context.fillRect(x + 72, height * 0.61, 46, 8);
+    }
   }
 }
 
 function drawStreetDetails(context: CanvasRenderingContext2D, width: number, height: number,
   vehicleX: number): void {
   const roadTop = height * 0.69;
-  const offset = ((vehicleX * 34) % 150 + 150) % 150;
+  const offset = positiveModulo(vehicleX * 34, 150);
+  const poleOffset = positiveModulo(vehicleX * 17, 310);
   context.save();
   context.fillStyle = 'rgba(255,255,255,0.34)';
   for (let x = -offset - 120; x < width + 120; x += 150) {
@@ -427,7 +483,7 @@ function drawStreetDetails(context: CanvasRenderingContext2D, width: number, hei
   }
   context.strokeStyle = '#15252d';
   context.lineWidth = 5;
-  for (let x = 80 - offset * 0.45; x < width + 220; x += 310) {
+  for (let x = 80 - poleOffset; x < width + 220; x += 310) {
     context.beginPath();
     context.moveTo(x, roadTop);
     context.lineTo(x, roadTop - 106);
@@ -441,12 +497,34 @@ function drawStreetDetails(context: CanvasRenderingContext2D, width: number, hei
   context.restore();
 }
 
+function drawHillLayer(context: CanvasRenderingContext2D, width: number, height: number,
+  drift: number, color: string, baseRatio: number, peakRatio: number, tileWidth: number): void {
+  const offset = positiveModulo(drift, tileWidth);
+  context.fillStyle = color;
+  for (let start = -offset - tileWidth; start < width + tileWidth; start += tileWidth) {
+    context.beginPath();
+    context.moveTo(start, height * baseRatio);
+    context.lineTo(start + tileWidth * 0.24, height * peakRatio);
+    context.lineTo(start + tileWidth * 0.5, height * baseRatio);
+    context.lineTo(start + tileWidth * 0.72, height * (peakRatio - 0.035));
+    context.lineTo(start + tileWidth, height * baseRatio);
+    context.lineTo(start + tileWidth, height);
+    context.lineTo(start, height);
+    context.closePath();
+    context.fill();
+  }
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: number,
   snapshot: AppSnapshot): void {
   const speed = Math.abs(snapshot.speedMps);
   if (speed < 0.6 || snapshot.state !== 'PLAYING') return;
   const scale = Math.min(1, speed / 5.5);
-  const baseX = width * 0.73 - worldScale(width, height) * 1.7;
+  const baseX = width * 0.5 - worldScale(width, height) * 1.7;
   const baseY = height * 0.69 - 8;
   context.save();
   context.fillStyle = `rgba(242, 193, 78, ${0.12 + scale * 0.16})`;
@@ -533,7 +611,13 @@ function drawCombi(
 
   const placements = gridForModel(snapshot.game);
   const securedIds = new Set(securedGridPlacements(placements).map((placement) => placement.id));
-  drawInstalledParts(context, placements, securedIds, x, y, bodyWidth, bodyHeight);
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
+  const rideElapsed = snapshot.ride
+    ? Math.max(0, (level?.durationSeconds ?? 60) - snapshot.ride.remainingSeconds)
+    : 0;
+  drawInstalledParts(context, placements, securedIds, x, y, bodyWidth, bodyHeight,
+    rideElapsed, world.body.angleRadians, snapshot.speedMps, snapshot.reducedMotion);
+  drawOnboardRequests(context, snapshot, x, y, bodyWidth, bodyHeight);
 
   context.fillStyle = '#182027';
   for (const wheel of world.body.wheels) {
@@ -558,6 +642,51 @@ function drawCombi(
     );
     context.stroke();
     context.fillStyle = '#182027';
+  }
+  context.restore();
+}
+
+function drawOnboardRequests(context: CanvasRenderingContext2D, snapshot: AppSnapshot,
+  bodyX: number, bodyY: number, bodyWidth: number, bodyHeight: number): void {
+  const onboard = snapshot.ride?.requests.filter((progress) => progress.status === 'onboard') ?? [];
+  if (onboard.length === 0) return;
+  const clothing: Readonly<Record<string, string>> = {
+    azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
+  };
+  context.save();
+  for (const [index, progress] of onboard.entries()) {
+    const personX = bodyX + bodyWidth * (0.3 + index * 0.15);
+    const personY = bodyY + bodyHeight * 0.36;
+    context.fillStyle = '#d9a47f';
+    context.beginPath();
+    context.arc(personX, personY, Math.max(3, bodyHeight * 0.07), 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = clothing[progress.request.attendantVariant] ?? '#62b7ff';
+    context.fillRect(personX - bodyWidth * 0.025, personY + bodyHeight * 0.06,
+      bodyWidth * 0.05, bodyHeight * 0.15);
+    if (progress.request.kind === 'roofCargo') {
+      const cargoX = bodyX + bodyWidth * 0.44;
+      const cargoY = bodyY - bodyHeight * 0.18;
+      context.fillStyle = progress.request.visualVariant === 'sacos' ? '#d0bd86' : '#b86b45';
+      roundedRect(context, cargoX, cargoY, bodyWidth * 0.22, bodyHeight * 0.22, 4);
+      context.fill();
+      context.strokeStyle = '#fff5d9';
+      context.lineWidth = 2;
+      context.stroke();
+    }
+    if (progress.request.kind === 'scooter') {
+      const scooterX = bodyX - bodyWidth * 0.13;
+      const scooterY = bodyY + bodyHeight * 0.7;
+      context.strokeStyle = '#d6d8d5';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(scooterX, scooterY, bodyHeight * 0.09, 0, Math.PI * 2);
+      context.arc(scooterX + bodyWidth * 0.2, scooterY, bodyHeight * 0.09, 0, Math.PI * 2);
+      context.moveTo(scooterX, scooterY);
+      context.lineTo(scooterX + bodyWidth * 0.09, scooterY - bodyHeight * 0.23);
+      context.lineTo(scooterX + bodyWidth * 0.2, scooterY);
+      context.stroke();
+    }
   }
   context.restore();
 }
@@ -587,6 +716,10 @@ function drawInstalledParts(
   bodyY: number,
   bodyWidth: number,
   bodyHeight: number,
+  rideElapsed: number,
+  bodyAngle: number,
+  speedMps: number,
+  reducedMotion: boolean,
 ): void {
   const insetX = bodyX + bodyWidth * 0.055;
   const insetY = bodyY + bodyHeight * 0.06;
@@ -598,11 +731,20 @@ function drawInstalledParts(
   for (const placement of placements) {
     if (placement.kind === 'wheel') continue;
     const footprint = PART_FOOTPRINTS[placement.kind];
-    const x = insetX + (placement.column / BUILD_GRID_COLUMNS) * innerWidth;
-    const y = insetY + (placement.row / BUILD_GRID_ROWS) * innerHeight;
+    let x = insetX + (placement.column / BUILD_GRID_COLUMNS) * innerWidth;
+    let y = insetY + (placement.row / BUILD_GRID_ROWS) * innerHeight;
     const width = Math.max(10, (footprint.columns / BUILD_GRID_COLUMNS) * innerWidth);
     const height = Math.max(10, (footprint.rows / BUILD_GRID_ROWS) * innerHeight);
     const secured = securedIds.has(placement.id);
+    context.save();
+    if (!secured && rideElapsed > 0) {
+      const pose = loosePartPose(placement.id, x, y, width, height, insetX, insetY,
+        innerWidth, innerHeight, rideElapsed, bodyAngle, speedMps, reducedMotion);
+      context.translate(pose.x + width / 2, pose.y + height / 2);
+      context.rotate(pose.rotation);
+      x = -width / 2;
+      y = -height / 2;
+    }
     context.globalAlpha = secured ? 1 : 0.55;
     context.strokeStyle = secured ? '#fff5d9' : '#ff8066';
     context.fillStyle = partColor(placement.kind);
@@ -657,8 +799,48 @@ function drawInstalledParts(
       context.fillRect(x, y, width, height);
       context.strokeRect(x, y, width, height);
     }
+    if (!secured) {
+      context.strokeStyle = '#fff5d9';
+      context.lineWidth = Math.max(1.5, bodyWidth * 0.007);
+      context.beginPath();
+      context.moveTo(x + width * 0.2, y + height * 0.2);
+      context.lineTo(x + width * 0.8, y + height * 0.8);
+      context.moveTo(x + width * 0.8, y + height * 0.2);
+      context.lineTo(x + width * 0.2, y + height * 0.8);
+      context.stroke();
+    }
+    context.restore();
   }
   context.restore();
+}
+
+interface LoosePartPose {
+  readonly x: number;
+  readonly y: number;
+  readonly rotation: number;
+}
+
+export function loosePartPose(id: string, startX: number, startY: number,
+  width: number, height: number, insetX: number, insetY: number,
+  innerWidth: number, innerHeight: number, elapsed: number, bodyAngle: number,
+  speedMps: number, reducedMotion: boolean): LoosePartPose {
+  let hash = 2166136261;
+  for (const character of id) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  const normalized = (hash >>> 0) / 4294967295;
+  const fallDuration = 0.48 + normalized * 0.42;
+  const rawProgress = Math.max(0, Math.min(1, elapsed / fallDuration));
+  const progress = 1 - (1 - rawProgress) ** 3;
+  const floorY = insetY + innerHeight - height - 2 - ((hash >>> 0) % 3) * height * 0.12;
+  const slide = Math.sin(bodyAngle) * innerWidth * 0.24;
+  const targetX = Math.max(insetX, Math.min(insetX + innerWidth - width,
+    insetX + normalized * (innerWidth - width) + slide));
+  const jostle = reducedMotion ? 0 : Math.sin(elapsed * 9 + normalized * 8) *
+    Math.min(4, Math.abs(speedMps) * 0.7) * progress;
+  return {
+    x: startX + (targetX - startX) * progress + jostle,
+    y: startY + (floorY - startY) * progress,
+    rotation: progress * (bodyAngle + (normalized - 0.5) * 0.9) + jostle * 0.025,
+  };
 }
 
 function partColor(kind: PartKind): string {

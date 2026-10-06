@@ -124,7 +124,9 @@ se conserva en el guardado local.
 La distribución de las ruedas también afecta la conducción: agruparlas hacia
 un solo lado aumenta con fuerza la resistencia al avance y reduce la tracción.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
-incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
+incluyen pasajeros y una carga para parrilla o scooter posterior. Toda carga
+aparece junto a su responsable, requiere además un asiento libre y se recoge
+directamente en la pista. Persona y objeto permanecen visibles al viajar. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su
 unión. Las tarifas están entre S/ 1 y S/ 5 según la distancia y las cuotas se
 ajustan a esos importes. El dinero entregado determina hasta tres estrellas,
@@ -137,6 +139,9 @@ El cronómetro, dinero, velocidad, salud del motor, pausa y controles de conducc
 instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
 Los golpes de carrocería contra la pista reducen el motor en 25 % y el arrastre
 continuo lo deteriora gradualmente; el humo comunica el daño sin abrir otro panel.
+Las piezas sin conexión caen al piso interior, se amontonan como desorden y no
+aportan función. El fondo usa capas periódicas de paralaje para que nubes, cerros,
+edificios y mobiliario continúen sin saltos al avanzar.
 
 La subida al cerro introduce una pendiente prolongada y tres entregas. El día
 de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,

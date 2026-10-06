@@ -12,6 +12,8 @@ export interface RideRequest {
   readonly baseFare: number;
   readonly distanceFare: number;
   readonly visualVariant: string;
+  readonly attendantVariant: string;
+  readonly cargoMassKg: number;
 }
 
 const PEOPLE_VARIANTS = ['azul', 'rojo', 'verde', 'amarillo'] as const;
@@ -72,6 +74,7 @@ function passengerRequest(
   random: () => number,
 ): RideRequest {
   const fare = fareForRoute(originX, destinationX);
+  const visualVariant = pick(PEOPLE_VARIANTS, random);
   return {
     id, originStop, destinationStop, originX, destinationX,
     kind: 'passenger',
@@ -79,7 +82,9 @@ function passengerRequest(
     requiredCapacity: 1,
     baseFare: 1,
     distanceFare: fare - 1,
-    visualVariant: pick(PEOPLE_VARIANTS, random),
+    visualVariant,
+    attendantVariant: visualVariant,
+    cargoMassKg: 0,
   };
 }
 
@@ -99,14 +104,18 @@ function cargoRequestForRoute(
   random: () => number,
 ): RideRequest {
   const fare = fareForRoute(originX, destinationX);
+  const cargoMassKg = 24 + Math.floor(random() * 27);
+  const attendantMassKg = 55 + Math.floor(random() * 20);
   return {
     id, originStop, destinationStop, originX, destinationX,
     kind,
-    massKg: 32 + Math.floor(random() * 29),
+    massKg: cargoMassKg + attendantMassKg,
     requiredCapacity: 1,
     baseFare: 1,
     distanceFare: fare - 1,
     visualVariant: pick(CARGO_VARIANTS, random),
+    attendantVariant: pick(PEOPLE_VARIANTS, random),
+    cargoMassKg,
   };
 }
 

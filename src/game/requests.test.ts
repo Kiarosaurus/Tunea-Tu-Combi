@@ -25,6 +25,11 @@ describe('generación de solicitudes', () => {
       expect(request.requiredCapacity).toBeGreaterThan(0);
       expect(requestFare(request)).toBeGreaterThanOrEqual(1);
       expect(requestFare(request)).toBeLessThanOrEqual(5);
+      expect(request.attendantVariant).toBeTruthy();
+      if (request.kind !== 'passenger') {
+        expect(request.cargoMassKg).toBeGreaterThan(0);
+        expect(request.massKg).toBeGreaterThan(request.cargoMassKg);
+      }
     }
   });
 

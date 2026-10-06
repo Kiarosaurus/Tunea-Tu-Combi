@@ -24,13 +24,22 @@ describe('primer recorrido', () => {
     expect(cargo).toBeDefined();
     if (!cargo) return;
     expect(() => ride.collect(cargo.id, cargo.originX, noCapacity)).toThrow('Falta');
-    const capacity = { ...noCapacity, [cargo.kind]: 1 };
+    const capacity = { ...noCapacity, passenger: 1, [cargo.kind]: 1 };
     ride.collect(cargo.id, cargo.originX, capacity);
     expect(ride.snapshot.requests.find((item) => item.request.id === cargo.id)?.status).toBe('onboard');
     expect(ride.snapshot.maximumPayloadMassKg).toBe(cargo.massKg);
     expect(ride.lose(cargo.id)).toBe(true);
     expect(ride.snapshot.requests.find((item) => item.request.id === cargo.id)?.status).toBe('missed');
     expect(ride.lose(cargo.id)).toBe(false);
+  });
+
+  it('reserva un asiento para la persona que acompaña cada carga', () => {
+    const ride = new RideSession();
+    const cargo = ride.snapshot.requests.find((item) => item.request.kind !== 'passenger')?.request;
+    expect(cargo).toBeDefined();
+    if (!cargo) return;
+    const onlySupport = { ...noCapacity, [cargo.kind]: 1 };
+    expect(() => ride.collect(cargo.id, cargo.originX, onlySupport)).toThrow('acompaña la carga');
   });
 
   it('mantiene tiempo fijo y termina a los 60 segundos', () => {

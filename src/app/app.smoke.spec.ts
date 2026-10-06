@@ -11,7 +11,7 @@ async function interactUntil(page: Page, locator: Locator, expectedText: string)
   }, { timeout: 10_000, intervals: [50] }).toBe(expectedText);
 }
 
-async function clickPassengerOnRoute(page: Page, requestId: string): Promise<void> {
+async function clickRequestOnRoute(page: Page, requestId: string): Promise<void> {
   const canvas = page.locator('canvas');
   await expect(canvas).toHaveAttribute('data-pickup-request', requestId, { timeout: 15_000 });
   await page.keyboard.up('d');
@@ -133,7 +133,7 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await page.keyboard.down('d');
   const revenue = page.locator('[data-ui="revenue"]');
   await expect(page.locator('canvas')).toHaveAttribute('data-route-code', 'CR27');
-  await clickPassengerOnRoute(page, 'primer-pasajero');
+  await clickRequestOnRoute(page, 'primer-pasajero');
   await expect(revenue).toHaveText('S/ 3', { timeout: 15_000 });
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('0 / 1');
   await expect(page.locator('canvas')).toHaveAttribute('data-pickup-request', 'segundo-pasajero',
@@ -143,7 +143,8 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
   await page.keyboard.down('d');
   await expect(revenue).toHaveText('S/ 6', { timeout: 15_000 });
-  await interactUntil(page, revenue, 'S/ 8');
+  await clickRequestOnRoute(page, 'carga-terminal');
+  await expect(revenue).toHaveText('S/ 8', { timeout: 15_000 });
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
@@ -222,7 +223,7 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 9', 'S/ 12']);
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
-  await expect(page.getByText('Piezas perdidas').locator('..')).toContainText('0');
+  await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('0');
   await page.reload();
   await expect(page.getByText(/Ruta 5/)).toBeVisible();
   const finalRevenue = await page.evaluate(() => {
