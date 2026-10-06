@@ -1,8 +1,20 @@
 import type { AppAction, AppSnapshot } from '../app/appController';
 import type { Disposable } from '../core/contracts';
 import { LEVELS } from '../data/levels';
-import { PART_CATALOG } from '../data/parts';
-import { ANCHORS, buildStats, createInitialGameModel, passengerCapacity, vehicleCapacity, type AnchorId } from '../game/model';
+import { PART_CATALOG, type PartKind } from '../data/parts';
+import {
+  BUILD_GRID_COLUMNS,
+  BUILD_GRID_ROWS,
+  PART_FOOTPRINTS,
+  createInitialGameModel,
+  gridBuildStats,
+  gridForModel,
+  gridPlacementFits,
+  gridVehicleCapacity,
+  securedGridPlacements,
+  validateGridBuild,
+  type GridPlacement,
+} from '../game/model';
 import { STOP_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
 
@@ -10,17 +22,6 @@ export interface AppView extends Disposable {
   readonly canvas: HTMLCanvasElement;
   render(snapshot: AppSnapshot): void;
 }
-
-const ANCHOR_NAMES: Readonly<Record<AnchorId, string>> = {
-  frontWheel: 'Rueda delantera',
-  rearWheel: 'Rueda posterior',
-  engine: 'Motor',
-  driverSeat: 'Asiento del conductor',
-  passengerSeat: 'Asiento de pasajero',
-  roof: 'Parrilla de techo',
-  rearCarrier: 'Portacarga posterior',
-  suspension: 'Suspensión',
-};
 
 export function createAppView(root: HTMLElement, dispatch: (action: AppAction) => void): AppView {
   const canvas = document.createElement('canvas');
@@ -56,9 +57,11 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   root.replaceChildren(canvas, shade, header, screen, footer);
 
   let visibleState = '';
+  const workshopUi: WorkshopUiState = { selectedPart: null };
   return {
     canvas,
     render(snapshot): void {
+      const stateChanged = snapshot.state !== visibleState;
       root.dataset.appState = snapshot.state;
       root.dataset.reducedMotion = String(snapshot.reducedMotion);
       routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
@@ -69,11 +72,12 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
         updatePlayingScreen(screen, snapshot);
         return;
       }
+      if (snapshot.state !== 'WORKSHOP') workshopUi.selectedPart = null;
       visibleState = snapshot.state;
-      screen.replaceChildren(createScreen(snapshot, dispatch));
+      screen.replaceChildren(createScreen(snapshot, dispatch, workshopUi));
       if (snapshot.state === 'PLAYING') updatePlayingScreen(screen, snapshot);
       const heading = screen.querySelector<HTMLElement>('h1');
-      if (heading) {
+      if (stateChanged && heading) {
         heading.tabIndex = -1;
         heading.focus();
       }
@@ -84,12 +88,17 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   };
 }
 
-function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
+interface WorkshopUiState {
+  selectedPart: PartKind | null;
+}
+
+function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
+  workshopUi: WorkshopUiState): HTMLElement {
   switch (snapshot.state) {
     case 'BOOT': return createBootScreen();
     case 'MENU': return createMenuScreen(snapshot, dispatch);
     case 'LEVEL_SELECT': return createLevelSelectScreen(snapshot, dispatch);
-    case 'WORKSHOP': return createWorkshopScreen(snapshot, dispatch);
+    case 'WORKSHOP': return createWorkshopScreen(snapshot, dispatch, workshopUi);
     case 'PLAYING': return createPlayingScreen(snapshot, dispatch);
     case 'PAUSED': return createPausedScreen(dispatch);
     case 'RESULTS': return createResultsScreen(snapshot, dispatch);
@@ -174,43 +183,231 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   return wrapper;
 }
 
-function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
+function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
+  workshopUi: WorkshopUiState): HTMLElement {
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
-  const stats = buildStats(snapshot.game.workshopBuild);
+  const grid = gridForModel(snapshot.game);
+  const stats = gridBuildStats(grid);
+  const capacity = gridVehicleCapacity(grid);
+  const securedIds = new Set(securedGridPlacements(grid).map((item) => item.id));
   const panel = panelElement('workshop-panel');
   panel.append(
     actionButton('Volver a rutas', 'text-action', () => dispatch({ type: 'BACK' })),
     textElement('p', 'eyebrow', level?.name ?? 'Taller'),
-    textElement('h1', 'section-title', 'Taller de la combi'),
-    textElement('p', 'workshop-intro',
-      workshopMessage(level?.number)),
+    textElement('h1', 'section-title', 'Constructor libre'),
+    textElement('p', 'workshop-intro', workshopMessage(level?.number)),
   );
 
   const summary = document.createElement('dl');
   summary.className = 'workshop-summary';
   summary.append(
     definitionItem('Billetera', `S/ ${snapshot.game.wallet}`),
-    definitionItem('Pasajeros', String(passengerCapacity(snapshot.game.workshopBuild))),
-    definitionItem('Carga techo', String(vehicleCapacity(snapshot.game.workshopBuild).roofCargo)),
-    definitionItem('Scooter posterior', String(vehicleCapacity(snapshot.game.workshopBuild).scooter)),
+    definitionItem('Pasajeros', String(capacity.passenger)),
+    definitionItem('Carga', String(capacity.roofCargo)),
+    definitionItem('Scooter', String(capacity.scooter)),
     definitionItem('Cuota', `S/ ${level?.quota ?? 25}`),
     definitionItem('Masa total', `${stats.massKg} kg`),
     definitionItem('Potencia', `${stats.engineForceN} N`),
-    definitionItem('Centro de gravedad', `${stats.centerOfMass.x.toFixed(2)}, ${stats.centerOfMass.y.toFixed(2)} m`),
+    definitionItem('Piezas sueltas', String(stats.loosePieces ?? 0)),
   );
   panel.append(summary);
 
+  const buildIssue = validateGridBuild(grid);
+  const launch = document.createElement('section');
+  launch.className = `launch-panel ${buildIssue ? 'has-issue' : 'is-ready'}`;
+  const wheelCount = stats.wheelOffsets?.length ?? 0;
+  const configuration = stats.engineForceN === 0
+    ? 'Sin motor: podrás iniciar, pero no acelerar.'
+    : wheelCount === 0
+      ? 'Sin ruedas conectadas: podrás iniciar, pero no tendrás tracción.'
+      : `${wheelCount} rueda${wheelCount === 1 ? '' : 's'} conectada${wheelCount === 1 ? '' : 's'} | centro de masa ${stats.centerOfMass.x.toFixed(2)}, ${stats.centerOfMass.y.toFixed(2)} m.`;
+  launch.append(
+    textElement('span', 'launch-indicator', buildIssue ? '!' : 'OK'),
+    textElement('strong', 'launch-title', buildIssue ? 'Falta el único componente obligatorio' : 'Construcción válida'),
+    textElement('span', 'launch-copy', buildIssue ?? configuration),
+  );
+  const startButton = actionButton('Iniciar recorrido de 30 segundos', 'primary-action launch-action', () =>
+    dispatch({ type: 'START_RIDE' }));
+  startButton.disabled = Boolean(buildIssue);
+  launch.append(startButton);
+  panel.append(statusMessage(snapshot.message), launch);
+
+  const builder = document.createElement('div');
+  builder.className = 'workshop-builder';
+  const vehicleSection = document.createElement('section');
+  vehicleSection.className = 'vehicle-builder';
+  vehicleSection.append(
+    textElement('p', 'builder-kicker', 'CUADRÍCULA 10 x 6'),
+    textElement('h2', 'builder-title', 'Coloca cada pieza donde quieras'),
+    textElement('p', 'builder-help', 'No hay anclajes predeterminados. Las piezas conectadas a la franja inferior o entre sí permanecen unidas; las aisladas se caerán al iniciar.'),
+  );
+  const selectionMessage = textElement('p', 'selection-message', 'Ninguna pieza seleccionada.');
+  selectionMessage.setAttribute('aria-live', 'polite');
+  const constructionGrid = document.createElement('div');
+  constructionGrid.className = 'construction-grid';
+  constructionGrid.setAttribute('aria-label', 'Cuadrícula libre de construcción de la combi');
+
+  const placedCounts: Partial<Record<PartKind, number>> = {};
+  for (const placement of grid) placedCounts[placement.kind] = (placedCounts[placement.kind] ?? 0) + 1;
+  const freeCount = (kind: PartKind): number => snapshot.game.ownedParts[kind] - (placedCounts[kind] ?? 0);
+  const cellButtons: HTMLButtonElement[] = [];
+  const inventoryButtons: HTMLButtonElement[] = [];
+  const candidateAt = (kind: PartKind, column: number, row: number): GridPlacement => ({
+    id: 'preview', kind, column, row,
+  });
+  const placeAt = (kind: PartKind, column: number, row: number): void => {
+    const candidate = candidateAt(kind, column, row);
+    if (!gridPlacementFits(candidate, grid)) {
+      refreshSelection(`${partName(kind)} no cabe ahí o se superpone con otra pieza.`);
+      return;
+    }
+    workshopUi.selectedPart = freeCount(kind) > 1 ? kind : null;
+    dispatch({ type: 'PLACE_GRID_PART', kind, column, row });
+  };
+  const moveTo = (placementId: string, column: number, row: number): void => {
+    const placement = grid.find((item) => item.id === placementId);
+    if (!placement) return;
+    const candidate = { ...placement, column, row };
+    if (!gridPlacementFits(candidate, grid)) {
+      refreshSelection(`${partName(placement.kind)} no cabe ahí o se superpone con otra pieza.`);
+      return;
+    }
+    dispatch({ type: 'MOVE_GRID_PART', placementId, column, row });
+  };
+  const refreshSelection = (feedback?: string): void => {
+    const selected = workshopUi.selectedPart;
+    selectionMessage.textContent = feedback ?? (selected
+      ? `${partName(selected)} seleccionada (${PART_FOOTPRINTS[selected].columns}x${PART_FOOTPRINTS[selected].rows}). Elige cualquier espacio libre.`
+      : 'Elige una pieza del inventario o toca una ya colocada para moverla.');
+    for (const button of inventoryButtons) {
+      const isSelected = button.dataset.partKind === selected;
+      button.classList.toggle('is-selected', isSelected);
+      button.setAttribute('aria-pressed', String(isSelected));
+    }
+    for (const button of cellButtons) {
+      const column = Number(button.dataset.column);
+      const row = Number(button.dataset.row);
+      const fits = selected ? gridPlacementFits(candidateAt(selected, column, row), grid) : false;
+      button.classList.toggle('is-target', fits);
+      button.classList.toggle('is-blocked', Boolean(selected) && !fits);
+    }
+  };
+
+  for (let row = 0; row < BUILD_GRID_ROWS; row += 1) {
+    for (let column = 0; column < BUILD_GRID_COLUMNS; column += 1) {
+      const cell = actionButton('', 'construction-cell', () => {
+        if (!workshopUi.selectedPart) {
+          refreshSelection('Primero elige una pieza del inventario.');
+          return;
+        }
+        placeAt(workshopUi.selectedPart, column, row);
+      });
+      cell.dataset.column = String(column);
+      cell.dataset.row = String(row);
+      if (row >= BUILD_GRID_ROWS - 2) cell.classList.add('is-chassis');
+      cell.style.gridColumn = String(column + 1);
+      cell.style.gridRow = String(row + 1);
+      cell.setAttribute('aria-label', `Celda columna ${column + 1}, fila ${row + 1}`);
+      cell.addEventListener('dragover', (event) => event.preventDefault());
+      cell.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const placementId = event.dataTransfer?.getData('application/x-tunea-placement');
+        if (placementId) {
+          moveTo(placementId, column, row);
+          return;
+        }
+        const dragged = event.dataTransfer?.getData('application/x-tunea-part') as PartKind | undefined;
+        if (dragged) placeAt(dragged, column, row);
+      });
+      cellButtons.push(cell);
+      constructionGrid.append(cell);
+    }
+  }
+
+  for (const placement of grid) {
+    const footprint = PART_FOOTPRINTS[placement.kind];
+    const secured = securedIds.has(placement.id);
+    const button = actionButton('', `grid-piece piece-${placement.kind} ${secured ? 'is-secured' : 'is-loose'}`, () => {
+      workshopUi.selectedPart = placement.kind;
+      dispatch({ type: 'REMOVE_GRID_PART', placementId: placement.id });
+    });
+    button.style.gridColumn = `${placement.column + 1} / span ${footprint.columns}`;
+    button.style.gridRow = `${placement.row + 1} / span ${footprint.rows}`;
+    button.setAttribute('aria-label', `Retirar ${partName(placement.kind)} de columna ${placement.column + 1}, fila ${placement.row + 1}`);
+    button.title = secured ? 'Conectada al chasis' : 'Suelta: se caerá al iniciar';
+    button.draggable = true;
+    button.append(
+      textElement('span', 'grid-piece-icon', partIcon(placement.kind)),
+      textElement('span', 'grid-piece-name', partName(placement.kind)),
+      textElement('span', 'grid-piece-state', secured ? 'CONECTADA' : 'SUELTA'),
+    );
+    button.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    });
+    button.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('application/x-tunea-placement', placement.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    constructionGrid.append(button);
+  }
+  vehicleSection.append(selectionMessage, constructionGrid,
+    textElement('p', 'grid-legend', 'Franja amarilla = conexión al chasis | Rojo = pieza aislada que se desprenderá'));
+
+  const inventory = document.createElement('section');
+  inventory.className = 'parts-tray';
+  inventory.append(
+    textElement('p', 'builder-kicker', 'INVENTARIO'),
+    textElement('h2', 'builder-title', 'Piezas disponibles'),
+  );
+  const trayGrid = document.createElement('div');
+  trayGrid.className = 'parts-tray-grid';
+  for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
+    const available = freeCount(part.kind);
+    const button = actionButton('', 'part-card', () => {
+      if (available < 1) {
+        refreshSelection(`No quedan ${part.name.toLowerCase()} libres.`);
+        return;
+      }
+      workshopUi.selectedPart = workshopUi.selectedPart === part.kind ? null : part.kind;
+      refreshSelection();
+    });
+    button.dataset.partKind = part.kind;
+    button.disabled = available < 1;
+    button.draggable = available > 0;
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`);
+    button.append(
+      textElement('span', 'part-card-icon', partIcon(part.kind)),
+      textElement('strong', 'part-card-name', part.name),
+      textElement('span', 'part-card-count', `${available} libre${available === 1 ? '' : 's'} | ${PART_FOOTPRINTS[part.kind].columns}x${PART_FOOTPRINTS[part.kind].rows} | ${part.massKg} kg`),
+    );
+    button.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('application/x-tunea-part', part.kind);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+      workshopUi.selectedPart = part.kind;
+      refreshSelection();
+    });
+    inventoryButtons.push(button);
+    trayGrid.append(button);
+  }
+  inventory.append(trayGrid);
+  builder.append(vehicleSection, inventory);
+  panel.append(builder);
+
   const shop = document.createElement('section');
-  shop.className = 'workshop-section';
-  shop.append(textElement('h2', 'workshop-heading', 'Tienda'));
+  shop.className = 'workshop-section shop-section';
+  shop.append(textElement('h2', 'workshop-heading', 'Tienda de repuestos'));
   const basicInventory = createInitialGameModel().ownedParts;
   for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
     const row = document.createElement('div');
     row.className = 'shop-row';
     row.append(textElement('span', '',
-      `${part.name} N${part.level} - S/ ${part.price} - ${part.massKg} kg - ${part.space} - ${part.function}. ${part.effect}.`));
-    row.append(actionButton(`Comprar ${part.name}`, 'small-action', () =>
-      dispatch({ type: 'BUY_PART', kind: part.kind })));
+      `${part.name} | S/ ${part.price} | ${part.massKg} kg | ${part.effect}`));
+    row.append(actionButton(`Comprar ${part.name}`, 'small-action', () => {
+      workshopUi.selectedPart = part.kind;
+      dispatch({ type: 'BUY_PART', kind: part.kind });
+    }));
     if (snapshot.game.pendingPurchases[part.kind] > 0) {
       row.append(actionButton(`Devolver ${part.name}`, 'small-action secondary-action', () =>
         dispatch({ type: 'RETURN_PURCHASE', kind: part.kind })));
@@ -220,54 +417,31 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     }
     shop.append(row);
   }
-  panel.append(shop);
 
-  const inventory = document.createElement('section');
-  inventory.className = 'workshop-section';
-  inventory.append(textElement('h2', 'workshop-heading', 'Inventario'));
-  for (const part of PART_CATALOG) {
-    const placedCount = Object.values(snapshot.game.workshopBuild)
-      .filter((item) => item === part.kind).length;
-    inventory.append(textElement('p', 'inventory-row',
-      `${part.name}: ${snapshot.game.ownedParts[part.kind]} en total, ${placedCount} colocadas.`));
-  }
-  panel.append(inventory);
-
-  const anchors = document.createElement('section');
-  anchors.className = 'workshop-section';
-  anchors.append(textElement('h2', 'workshop-heading', 'Puntos de anclaje'));
-  for (const [anchorName, kind] of Object.entries(ANCHORS)) {
-    const anchor = anchorName as AnchorId;
-    const placed = snapshot.game.workshopBuild[anchor];
-    const row = document.createElement('div');
-    row.className = 'anchor-row';
-    row.append(textElement('span', '', `${ANCHOR_NAMES[anchor]}: ${placed ? 'colocado' : 'vacío'}`));
-    if (placed) {
-      row.append(actionButton(`Retirar ${ANCHOR_NAMES[anchor]}`, 'small-action secondary-action', () =>
-        dispatch({ type: 'REMOVE_PART', anchor })));
-    } else {
-      const button = actionButton(`Colocar ${ANCHOR_NAMES[anchor]}`, 'small-action', () =>
-        dispatch({ type: 'PLACE_PART', kind, anchor }));
-      const placedCount = Object.values(snapshot.game.workshopBuild).filter((item) => item === kind).length;
-      button.disabled = placedCount >= snapshot.game.ownedParts[kind];
-      row.append(button);
-    }
-    anchors.append(row);
-  }
-  panel.append(anchors, statusMessage(snapshot.message),
-    textElement('p', 'control-hint', 'Controles: A / izquierda reversa, D / derecha acelera, Espacio frena, E interactúa, Esc pausa, R reinicia y F1 depura.'),
-    actionButton('Limpiar piezas opcionales', 'small-action secondary-action', () =>
-      dispatch({ type: 'CLEAR_OPTIONAL_PARTS' })),
-    actionButton('Iniciar recorrido de 30 segundos', 'primary-action', () =>
-      dispatch({ type: 'START_RIDE' })));
+  panel.append(shop,
+    textElement('p', 'control-hint', 'Sólo necesitas un asiento para iniciar. Motor, ruedas, posición, conexión y masa determinan lo que ocurrirá en ruta.'),
+    actionButton('Conservar sólo el asiento del conductor', 'small-action secondary-action', () =>
+      dispatch({ type: 'CLEAR_OPTIONAL_PARTS' })));
+  refreshSelection();
   return panel;
 }
 
+function partName(kind: PartKind): string {
+  return PART_CATALOG.find((part) => part.kind === kind)?.name ?? kind;
+}
+
+function partIcon(kind: PartKind): string {
+  const icons: Readonly<Record<PartKind, string>> = {
+    chassis: 'CH', wheel: 'O', engine: 'M', seat: 'S', roofRack: 'T', rearCarrier: 'C', suspension: '~',
+  };
+  return icons[kind];
+}
+
 function workshopMessage(levelNumber: number | undefined): string {
-  if (levelNumber === 3) return 'Equipa asiento, parrilla y portacarga para atender todas las solicitudes del mercado.';
-  if (levelNumber === 4) return 'La pista dañada exige suspensión y soportes resistentes a los impactos.';
-  if (levelNumber === 5) return 'Hora punta combina todas las capacidades. Prepara una combi completa.';
-  return 'El kit básico ya está montado. Equilibra capacidad y masa para alcanzar la cuota.';
+  if (levelNumber === 3) return 'La ruta ofrece pasajeros y carga, pero tú decides qué capacidades construir y dónde ubicarlas.';
+  if (levelNumber === 4) return 'Puedes intentar la pista sin suspensión; la posición y las conexiones decidirán cuánto resiste.';
+  if (levelNumber === 5) return 'Hora punta combina todo, sin imponer una única construcción correcta.';
+  return 'Sólo el asiento del conductor es obligatorio. Todo lo demás - incluidos motor y ruedas - queda a tu criterio.';
 }
 
 function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
@@ -288,22 +462,71 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     item.querySelector('strong')?.setAttribute('data-ui', key);
     hud.append(item);
   }
-  panel.append(hud, textElement('p', 'control-hint', 'D / flecha derecha: acelerar - A / izquierda: reversa - Espacio: frenar - E: interactuar - Esc: pausa'));
+  panel.append(hud, textElement('p', 'control-hint',
+    'Haz clic directamente en la persona junto a la pista. Al llegar a su parada bajará automáticamente y liberará el asiento.'));
 
   const requests = document.createElement('div');
   requests.className = 'request-list';
   for (const progress of snapshot.ride?.requests ?? []) {
+    if (progress.request.kind === 'passenger') continue;
     const button = actionButton('', 'request-action', () =>
       dispatch({ type: 'COLLECT_REQUEST', requestId: progress.request.id }));
     button.dataset.requestId = progress.request.id;
     requests.append(button);
   }
-  const delivery = actionButton('Bajar pasajero', 'small-action', () =>
+  const delivery = actionButton('Entregar carga', 'small-action', () =>
     dispatch({ type: 'DELIVER_REQUEST' }));
   delivery.dataset.ui = 'deliver';
-  panel.append(requests, delivery, statusMessage(snapshot.message),
+  panel.append(requests, delivery, statusMessage(snapshot.message), createDriveControls(dispatch),
     actionButton('Pausa', 'small-action secondary-action', () => dispatch({ type: 'PAUSE' })));
   return panel;
+}
+
+function createDriveControls(dispatch: (action: AppAction) => void): HTMLElement {
+  const controls = document.createElement('div');
+  controls.className = 'drive-controls';
+  controls.setAttribute('aria-label', 'Controles de conducción');
+  const holdButton = (label: string, className: string, start: () => void, stop: () => void): HTMLButtonElement => {
+    const button = actionButton(label, `drive-control ${className}`, () => undefined);
+    const begin = (event: Event): void => {
+      event.preventDefault();
+      if (button.classList.contains('is-active')) return;
+      button.classList.add('is-active');
+      start();
+    };
+    const end = (event: Event): void => {
+      event.preventDefault();
+      if (!button.classList.contains('is-active')) return;
+      button.classList.remove('is-active');
+      stop();
+    };
+    button.addEventListener('pointerdown', begin);
+    button.addEventListener('pointerup', end);
+    button.addEventListener('pointercancel', end);
+    button.addEventListener('pointerleave', (event) => {
+      if ((event as PointerEvent).buttons > 0) end(event);
+    });
+    button.addEventListener('keydown', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') begin(event);
+    });
+    button.addEventListener('keyup', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') end(event);
+    });
+    controls.addEventListener('contextmenu', (event) => event.preventDefault());
+    return button;
+  };
+  controls.append(
+    holdButton('Reversa', 'reverse-control',
+      () => dispatch({ type: 'SET_THROTTLE', value: -1 }),
+      () => dispatch({ type: 'SET_THROTTLE', value: 0 })),
+    holdButton('Frenar', 'brake-control',
+      () => dispatch({ type: 'SET_BRAKE', value: true }),
+      () => dispatch({ type: 'SET_BRAKE', value: false })),
+    holdButton('Acelerar', 'accelerate-control',
+      () => dispatch({ type: 'SET_THROTTLE', value: 1 }),
+      () => dispatch({ type: 'SET_THROTTLE', value: 0 })),
+  );
+  return controls;
 }
 
 function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
@@ -315,8 +538,9 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   setUiText(screen, 'quota', `S/ ${level?.quota ?? 0}`);
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
-  setUiText(screen, 'capacity', `${ride.requests.filter((item) => item.status === 'onboard')
-    .reduce((total, item) => total + item.request.massKg, 0)} kg`);
+  const onboardPassengers = ride.requests.filter((item) =>
+    item.status === 'onboard' && item.request.kind === 'passenger').length;
+  setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
   const message = screen.querySelector<HTMLElement>('[role="status"]');
   if (message) message.textContent = snapshot.message;
   for (const progress of ride.requests) {
@@ -330,7 +554,8 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   }
   const delivery = screen.querySelector<HTMLButtonElement>('[data-ui="deliver"]');
   if (delivery) {
-    const onboard = ride.requests.find((item) => item.status === 'onboard');
+    const onboard = ride.requests.find((item) =>
+      item.status === 'onboard' && item.request.kind !== 'passenger');
     delivery.hidden = !onboard;
     delivery.disabled = !onboard || Math.abs(snapshot.vehicleX - onboard.request.destinationX) > STOP_RADIUS_METERS;
     delivery.textContent = onboard

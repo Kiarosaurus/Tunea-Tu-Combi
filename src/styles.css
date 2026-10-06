@@ -119,6 +119,11 @@ button:focus-visible {
   width: 100%;
   height: 100%;
   padding: 92px clamp(22px, 5vw, 72px) 70px;
+  pointer-events: none;
+}
+
+.screen .panel {
+  pointer-events: auto;
 }
 
 .panel {
@@ -297,7 +302,7 @@ button:focus-visible {
 }
 
 .workshop-panel {
-  width: min(700px, 100%);
+  width: min(1180px, 100%);
   padding: 32px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 10px 34px 10px 10px;
@@ -316,6 +321,366 @@ button:focus-visible {
   color: rgba(248, 241, 229, 0.78);
   line-height: 1.5;
 }
+
+.workshop-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(230px, 0.8fr);
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.vehicle-builder,
+.parts-tray {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px 26px 12px 12px;
+  background: rgba(4, 17, 27, 0.58);
+}
+
+.builder-kicker {
+  margin: 0 0 5px;
+  color: #f2c14e;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.builder-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.builder-help,
+.selection-message {
+  margin: 8px 0;
+  color: rgba(248, 241, 229, 0.65);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.construction-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(34px, 1fr));
+  grid-template-rows: repeat(6, minmax(52px, 1fr));
+  gap: 4px;
+  min-height: 360px;
+  margin-top: 12px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(242, 193, 78, 0.28);
+  border-radius: 10px 24px 10px 10px;
+  background:
+    linear-gradient(to bottom, transparent 0 81.5%, rgba(242, 193, 78, 0.19) 81.5% 100%),
+    radial-gradient(circle at 50% 52%, rgba(45, 142, 154, 0.2), transparent 55%),
+    #071b29;
+}
+
+.construction-cell {
+  z-index: 1;
+  min-width: 34px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px dashed rgba(255,255,255,0.17);
+  border-radius: 5px;
+  background: rgba(255,255,255,0.025);
+  cursor: crosshair;
+}
+
+.construction-cell:hover,
+.construction-cell.is-target {
+  border-color: #ffe083;
+  background: rgba(242, 193, 78, 0.16);
+}
+
+.construction-cell.is-blocked {
+  border-color: rgba(255, 128, 102, 0.18);
+  background: rgba(255, 128, 102, 0.035);
+}
+
+.construction-cell.is-chassis {
+  border-color: rgba(242, 193, 78, 0.5);
+  background: rgba(190, 112, 42, 0.28);
+  box-shadow: inset 0 -4px 0 rgba(242, 193, 78, 0.2);
+}
+
+.construction-cell.is-chassis:hover,
+.construction-cell.is-chassis.is-target {
+  border-color: #ffe083;
+  background: rgba(242, 193, 78, 0.38);
+}
+
+.grid-piece {
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 5px;
+  overflow: hidden;
+  border: 2px solid #70d5bf;
+  border-radius: 8px 14px 8px 8px;
+  background: linear-gradient(145deg, #175467, #123844);
+  color: #fff;
+  cursor: grab;
+  text-align: center;
+  box-shadow: 0 5px 12px rgba(0,0,0,0.3);
+}
+
+.grid-piece:hover {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+}
+
+.grid-piece.is-loose {
+  border-color: #ff8066;
+  border-style: dashed;
+  background: linear-gradient(145deg, #723b37, #432b2d);
+  animation: loose-piece 0.7s ease-in-out infinite alternate;
+}
+
+.grid-piece-icon {
+  font-size: clamp(18px, 2vw, 28px);
+  line-height: 1;
+}
+
+.grid-piece-name {
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.grid-piece-state {
+  margin-top: 3px;
+  color: #8fe2ce;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.is-loose .grid-piece-state { color: #ffad9c; }
+
+.piece-wheel {
+  border-radius: 999px;
+  background: #172630;
+}
+
+.piece-engine { background: linear-gradient(145deg, #875f23, #44351e); }
+.piece-seat { background: linear-gradient(145deg, #246b63, #173e3d); }
+.piece-roofRack,
+.piece-rearCarrier { background: linear-gradient(145deg, #6f4a72, #3e304d); }
+.piece-suspension { background: linear-gradient(145deg, #315e83, #213b59); }
+
+.grid-legend {
+  margin: 9px 0 0;
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+}
+
+@keyframes loose-piece {
+  from { transform: rotate(-0.6deg); }
+  to { transform: rotate(0.6deg); }
+}
+
+.selection-message {
+  min-height: 18px;
+  color: #ffe083;
+  font-weight: 700;
+}
+
+.combi-blueprint {
+  position: relative;
+  min-height: 390px;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(242, 193, 78, 0.2);
+  border-radius: 10px 26px 10px 10px;
+  background:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+    radial-gradient(circle at 54% 44%, rgba(45, 142, 154, 0.24), transparent 48%),
+    #071b29;
+  background-size: 24px 24px, 24px 24px, auto, auto;
+}
+
+.combi-blueprint::after {
+  position: absolute;
+  right: 7%;
+  bottom: 56px;
+  left: 7%;
+  height: 2px;
+  background: rgba(255,255,255,0.2);
+  content: "";
+}
+
+.combi-roof,
+.combi-body {
+  position: absolute;
+  border: 3px solid rgba(248, 241, 229, 0.78);
+  background: linear-gradient(145deg, rgba(31, 117, 137, 0.9), rgba(18, 70, 91, 0.94));
+}
+
+.combi-roof {
+  top: 23%;
+  right: 18%;
+  left: 18%;
+  height: 26%;
+  border-bottom: 0;
+  border-radius: 70px 30px 0 0;
+}
+
+.combi-body {
+  top: 48%;
+  right: 12%;
+  left: 12%;
+  height: 31%;
+  border-radius: 8px 24px 10px 10px;
+}
+
+.combi-window {
+  position: absolute;
+  z-index: 1;
+  top: 29%;
+  height: 17%;
+  border: 2px solid rgba(248, 241, 229, 0.7);
+  background: rgba(140, 211, 217, 0.18);
+}
+
+.combi-window-rear { left: 23%; width: 25%; border-radius: 30px 4px 4px 4px; }
+.combi-window-front { right: 23%; width: 23%; border-radius: 4px 20px 4px 4px; }
+
+.combi-bumper {
+  position: absolute;
+  z-index: 1;
+  right: 7%;
+  top: 67%;
+  width: 8%;
+  height: 5%;
+  border-radius: 3px;
+  background: #f2c14e;
+}
+
+.mount-point {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 70px;
+  min-height: 58px;
+  padding: 5px;
+  border: 2px dashed rgba(255,255,255,0.42);
+  border-radius: 12px;
+  background: rgba(5, 20, 31, 0.84);
+  color: rgba(255,255,255,0.74);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.mount-point:hover,
+.mount-point:focus-visible,
+.mount-point.is-target,
+.mount-point.is-dragover {
+  border-color: #ffe083;
+  background: rgba(242, 193, 78, 0.18);
+  color: #fff3bc;
+  box-shadow: 0 0 0 5px rgba(242, 193, 78, 0.1);
+}
+
+.mount-point.is-occupied {
+  border-style: solid;
+  border-color: #70d5bf;
+  background: #123f49;
+  color: #fff;
+}
+
+.mount-icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.mount-label {
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1.05;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.mount-frontWheel { left: 74%; top: 77%; border-radius: 50%; }
+.mount-rearWheel { left: 29%; top: 77%; border-radius: 50%; }
+.mount-engine { left: 72%; top: 57%; }
+.mount-driverSeat { left: 59%; top: 48%; }
+.mount-passengerSeat { left: 43%; top: 55%; }
+.mount-roof { left: 50%; top: 17%; width: 98px; }
+.mount-rearCarrier { left: 9%; top: 57%; }
+.mount-suspension { left: 51%; top: 75%; width: 96px; min-height: 42px; }
+
+.parts-tray-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.part-card {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 8px 16px 8px 8px;
+  background: rgba(255,255,255,0.055);
+  color: inherit;
+  text-align: left;
+  cursor: grab;
+}
+
+.part-card:hover:not(:disabled),
+.part-card.is-selected {
+  border-color: #f2c14e;
+  background: rgba(242, 193, 78, 0.13);
+}
+
+.part-card:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.part-card-icon {
+  grid-row: 1 / 3;
+  color: #f2c14e;
+  font-size: 26px;
+  text-align: center;
+}
+
+.part-card-name { font-size: 12px; }
+.part-card-count { color: rgba(255,255,255,0.58); font-size: 10px; }
+
+.launch-panel {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 2px 12px;
+  align-items: center;
+  margin: 22px 0 14px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px 22px 10px 10px;
+  background: rgba(255,255,255,0.05);
+}
+
+.launch-panel.is-ready { border-color: rgba(112, 213, 191, 0.5); }
+.launch-panel.has-issue { border-color: rgba(255, 128, 102, 0.55); }
+.launch-indicator { grid-row: 1 / 3; color: #70d5bf; font-size: 28px; font-weight: 900; }
+.has-issue .launch-indicator { color: #ff8066; }
+.launch-title { font-size: 14px; }
+.launch-copy { grid-column: 2; color: rgba(255,255,255,0.62); font-size: 11px; }
+.launch-action { grid-column: 3; grid-row: 1 / 3; }
+.launch-action:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
 .workshop-section {
   margin: 22px 0;
@@ -447,6 +812,40 @@ button:focus-visible {
   display: none;
 }
 
+.drive-controls {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr 1fr;
+  gap: 8px;
+  margin: 16px 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.drive-control {
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px 16px 8px 8px;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.drive-control.is-active,
+.accelerate-control:active {
+  border-color: #f2c14e;
+  background: #f2c14e;
+  color: #172630;
+  transform: translateY(2px);
+}
+
+.brake-control.is-active {
+  border-color: #ff8066;
+  background: #ff8066;
+}
+
 .workshop-summary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -454,6 +853,10 @@ button:focus-visible {
   margin: 28px 0 0;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.14);
+}
+
+.workshop-panel .workshop-summary {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .workshop-summary > div {
@@ -496,6 +899,32 @@ button:focus-visible {
   .footer-note {
     display: none;
   }
+
+  .workshop-panel {
+    padding: 22px;
+  }
+
+  .workshop-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .workshop-panel .workshop-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .parts-tray-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .launch-panel {
+    grid-template-columns: auto 1fr;
+  }
+
+  .launch-action {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    margin-top: 10px;
+  }
 }
 
 @media (max-width: 500px) {
@@ -506,6 +935,71 @@ button:focus-visible {
   .level-grid,
   .workshop-summary {
     grid-template-columns: 1fr;
+  }
+
+  .workshop-panel .workshop-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .combi-blueprint {
+    min-height: 330px;
+  }
+
+  .construction-grid {
+    grid-template-columns: repeat(10, minmax(22px, 1fr));
+    grid-template-rows: repeat(6, 42px);
+    gap: 2px;
+    min-height: 286px;
+    padding: 8px;
+  }
+
+  .construction-cell {
+    min-width: 22px;
+    min-height: 40px;
+  }
+
+  .grid-piece {
+    padding: 2px;
+  }
+
+  .grid-piece-name {
+    font-size: 7px;
+  }
+
+  .grid-piece-state {
+    display: none;
+  }
+
+  .mount-point {
+    width: 42px;
+    min-height: 42px;
+    padding: 3px;
+  }
+
+  .mount-roof,
+  .mount-suspension {
+    width: 64px;
+  }
+
+  .mount-icon {
+    font-size: 20px;
+  }
+
+  .mount-label {
+    display: none;
+  }
+
+  .parts-tray-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    padding: 8px;
+    border-radius: 10px;
+    background: rgba(5, 20, 31, 0.94);
   }
 }
 

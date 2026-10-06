@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LEVELS } from '../data/levels';
 import { generateLevelOneRequests, generateRequests, requestFare } from './requests';
 
 describe('generación de solicitudes', () => {
@@ -22,7 +23,8 @@ describe('generación de solicitudes', () => {
     for (const request of requests) {
       expect(request.massKg).toBeGreaterThan(0);
       expect(request.requiredCapacity).toBeGreaterThan(0);
-      expect(requestFare(request)).toBeGreaterThan(0);
+      expect(requestFare(request)).toBeGreaterThanOrEqual(1);
+      expect(requestFare(request)).toBeLessThanOrEqual(5);
     }
   });
 
@@ -35,15 +37,19 @@ describe('generación de solicitudes', () => {
     const market = generateRequests('dia-de-mercado', 'mercado-base');
     expect(hill.every((request) => request.kind === 'passenger')).toBe(true);
     expect(market.map((request) => request.kind)).toEqual(['passenger', 'roofCargo', 'scooter']);
-    expect(hill.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(40);
-    expect(market.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(55);
+    expect(hill.reduce((total, request) => total + requestFare(request), 0))
+      .toBeGreaterThanOrEqual(LEVELS[1]?.quota ?? Number.POSITIVE_INFINITY);
+    expect(market.reduce((total, request) => total + requestFare(request), 0))
+      .toBeGreaterThanOrEqual(LEVELS[2]?.quota ?? Number.POSITIVE_INFINITY);
   });
 
   it('cubre las cuotas de pista dañada y hora punta con todos los soportes', () => {
     const damaged = generateRequests('pista-danada', 'pista-danada-base');
     const rush = generateRequests('hora-punta', 'hora-punta-base');
-    expect(damaged.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(70);
-    expect(rush.reduce((total, request) => total + requestFare(request), 0)).toBeGreaterThanOrEqual(90);
+    expect(damaged.reduce((total, request) => total + requestFare(request), 0))
+      .toBeGreaterThanOrEqual(LEVELS[3]?.quota ?? Number.POSITIVE_INFINITY);
+    expect(rush.reduce((total, request) => total + requestFare(request), 0))
+      .toBeGreaterThanOrEqual(LEVELS[4]?.quota ?? Number.POSITIVE_INFINITY);
     expect(new Set(rush.map((request) => request.kind))).toEqual(
       new Set(['passenger', 'roofCargo', 'scooter']),
     );

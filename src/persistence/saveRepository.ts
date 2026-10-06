@@ -2,9 +2,13 @@ import { LEVELS } from '../data/levels';
 import { PART_CATALOG, type PartKind } from '../data/parts';
 import {
   ANCHORS,
+  BUILD_GRID_COLUMNS,
+  BUILD_GRID_ROWS,
+  PART_FOOTPRINTS,
   createInitialGameModel,
   type AnchorId,
   type GameModel,
+  type GridPlacement,
   type Inventory,
   type SerializedBuild,
 } from '../game/model';
@@ -86,6 +90,7 @@ export function isSaveDataV1(value: unknown): value is SaveDataV1 {
     !isLevelNumber(value.unlockedLevel) ||
     !isInventory(value.ownedParts) || !isInventory(value.pendingPurchases) ||
     !isBuild(value.workshopBuild, value.ownedParts) ||
+    (value.workshopGrid !== undefined && !isGrid(value.workshopGrid, value.ownedParts)) ||
     !isRecord(value.completedLevels) ||
     !isRecord(value.settings) ||
     !isUnitInterval(value.settings.masterVolume) ||
@@ -123,6 +128,34 @@ function isBuild(value: unknown, inventory: Inventory): value is SerializedBuild
   for (const [anchor, kind] of Object.entries(value)) {
     if (!(anchor in ANCHORS) || ANCHORS[anchor as AnchorId] !== kind) return false;
     placed[kind as PartKind] = (placed[kind as PartKind] ?? 0) + 1;
+  }
+  return PART_CATALOG.every((part) => (placed[part.kind] ?? 0) <= inventory[part.kind]);
+}
+
+function isGrid(value: unknown, inventory: Inventory): value is readonly GridPlacement[] {
+  if (!Array.isArray(value)) return false;
+  const placed: Partial<Record<PartKind, number>> = {};
+  const occupied = new Set<string>();
+  const ids = new Set<string>();
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.id !== 'string' || ids.has(item.id) ||
+      !PART_CATALOG.some((part) => part.kind === item.kind && item.kind !== 'chassis') ||
+      !Number.isInteger(item.column) || !Number.isInteger(item.row)) return false;
+    const kind = item.kind as PartKind;
+    const column = item.column as number;
+    const row = item.row as number;
+    const footprint = PART_FOOTPRINTS[kind];
+    if (column < 0 || row < 0 || column + footprint.columns > BUILD_GRID_COLUMNS ||
+      row + footprint.rows > BUILD_GRID_ROWS) return false;
+    for (let cellRow = row; cellRow < row + footprint.rows; cellRow += 1) {
+      for (let cellColumn = column; cellColumn < column + footprint.columns; cellColumn += 1) {
+        const key = `${cellColumn}:${cellRow}`;
+        if (occupied.has(key)) return false;
+        occupied.add(key);
+      }
+    }
+    ids.add(item.id);
+    placed[kind] = (placed[kind] ?? 0) + 1;
   }
   return PART_CATALOG.every((part) => (placed[part.kind] ?? 0) <= inventory[part.kind]);
 }

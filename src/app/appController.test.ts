@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LocalSaveRepository, type StorageLike } from '../persistence/saveRepository';
 import { createSaveData } from '../persistence/saveRepository';
-import { buildStats, createInitialGameModel } from '../game/model';
+import { createDemoGameModel, createInitialGameModel, gridBuildStats, gridForModel, placeGridPart } from '../game/model';
 import { AppController } from './appController';
 
 function memoryStorage(): StorageLike {
@@ -38,15 +38,20 @@ function completeRide(controller: AppController): void {
 }
 
 function fullyEquippedModel(unlockedLevel: number) {
-  const model = createInitialGameModel();
+  const model = createDemoGameModel();
   return {
     ...model,
     unlockedLevel,
-    ownedParts: { ...model.ownedParts, seat: 2, roofRack: 1, rearCarrier: 1, suspension: 1 },
-    workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat' as const,
-      roof: 'roofRack' as const, rearCarrier: 'rearCarrier' as const,
-      suspension: 'suspension' as const },
   };
+}
+
+function modelWithPassenger(unlockedLevel: number) {
+  const model = createInitialGameModel();
+  return placeGridPart({
+    ...model,
+    unlockedLevel,
+    ownedParts: { ...model.ownedParts, seat: 2 },
+  }, 'seat', 0, 4);
 }
 
 describe('flujo vertical del primer recorrido', () => {
@@ -80,7 +85,7 @@ describe('flujo vertical del primer recorrido', () => {
 
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.won).toBe(true);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(25);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(6);
     expect(controller.snapshot.game.unlockedLevel).toBe(2);
     expect(maximumObservedPayloadKg).toBeGreaterThan(0);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBe(maximumObservedPayloadKg);
@@ -124,20 +129,14 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'PLACE_PART', kind: 'roofRack', anchor: 'roof' });
     controller.dispatch({ type: 'START_RIDE' });
     expect(controller.worldSnapshot.body.massKg).toBe(
-      buildStats(controller.snapshot.game.workshopBuild).massKg,
+      gridBuildStats(gridForModel(controller.snapshot.game)).massKg,
     );
     expect(controller.worldSnapshot.joints[0]).toMatchObject({ id: 'roofRack', broken: false });
   });
 
   it('completa la subida al cerro y desbloquea el nivel 3', () => {
     const storage = memoryStorage();
-    const model = createInitialGameModel();
-    new LocalSaveRepository(storage).save(createSaveData({
-      ...model,
-      unlockedLevel: 2,
-      ownedParts: { ...model.ownedParts, seat: 2 },
-      workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat' },
-    }, false));
+    new LocalSaveRepository(storage).save(createSaveData(modelWithPassenger(2), false));
     const controller = new AppController(new LocalSaveRepository(storage));
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
@@ -145,21 +144,14 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(40);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(8);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(3);
   });
 
   it('completa el día de mercado con carga alta y desbloquea el nivel 4', () => {
     const storage = memoryStorage();
-    const model = createInitialGameModel();
-    new LocalSaveRepository(storage).save(createSaveData({
-      ...model,
-      unlockedLevel: 3,
-      ownedParts: { ...model.ownedParts, seat: 2, roofRack: 1, rearCarrier: 1, suspension: 1 },
-      workshopBuild: { ...model.workshopBuild, passengerSeat: 'seat', roof: 'roofRack',
-        rearCarrier: 'rearCarrier', suspension: 'suspension' },
-    }, false));
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(3), false));
     const controller = new AppController(new LocalSaveRepository(storage));
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
@@ -168,7 +160,7 @@ describe('flujo vertical del primer recorrido', () => {
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.vehicleX).toBeGreaterThan(4);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(55);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(9);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(4);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(30);
@@ -184,7 +176,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(70);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(10);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
   });
@@ -199,20 +191,26 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(90);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(11);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
     expect(controller.snapshot.game.completedLevels['hora-punta']).toBeDefined();
   });
 
-  it('bloquea una construcción sin rueda y recupera un guardado inválido', () => {
+  it('permite salir sin una rueda, pero bloquea una construcción sin asiento', () => {
     const storage = memoryStorage();
     const controller = new AppController(new LocalSaveRepository(storage));
     enterWorkshop(controller);
     controller.dispatch({ type: 'REMOVE_PART', anchor: 'frontWheel' });
     controller.dispatch({ type: 'START_RIDE' });
-    expect(controller.snapshot.state).toBe('WORKSHOP');
-    expect(controller.snapshot.message).toBe('Faltan dos ruedas.');
+    expect(controller.snapshot.state).toBe('PLAYING');
+
+    const noSeat = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(noSeat);
+    noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
+    noSeat.dispatch({ type: 'START_RIDE' });
+    expect(noSeat.snapshot.state).toBe('WORKSHOP');
+    expect(noSeat.snapshot.message).toBe('Falta el asiento del conductor.');
 
     storage.setItem('tunea-tu-combi:save:v1', '{mal-json');
     const recovered = new AppController(new LocalSaveRepository(storage));

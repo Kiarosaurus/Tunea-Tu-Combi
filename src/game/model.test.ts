@@ -6,12 +6,17 @@ import {
   clearOptionalParts,
   createDemoGameModel,
   createInitialGameModel,
+  gridBuildStats,
+  gridForModel,
+  moveGridPart,
+  placeGridPart,
   passengerCapacity,
   placePart,
   removePart,
   returnPurchase,
   sellPart,
   validateBuild,
+  validateGridBuild,
 } from './model';
 
 describe('taller y economía', () => {
@@ -48,11 +53,35 @@ describe('taller y economía', () => {
     expect(() => placePart(initial, 'seat', 'passengerSeat')).toThrow('No hay piezas libres');
   });
 
-  it('valida las piezas esenciales y protege el kit básico', () => {
+  it('sólo exige el asiento del conductor y protege el kit básico', () => {
     const initial = createInitialGameModel();
     const removedWheel = removePart(initial, 'frontWheel');
-    expect(validateBuild(removedWheel.workshopBuild)).toBe('Faltan dos ruedas.');
+    expect(validateBuild(removedWheel.workshopBuild)).toBeNull();
+    const removedSeat = removePart(initial, 'driverSeat');
+    expect(validateGridBuild(gridForModel(removedSeat))).toBe('Falta el asiento del conductor.');
     expect(() => sellPart(initial, 'wheel')).toThrow('kit básico');
+  });
+
+  it('permite posiciones libres, evita solapamientos y detecta piezas sueltas', () => {
+    const initial = createInitialGameModel();
+    const withoutEngine = removePart(initial, 'engine');
+    const roofEngine = placeGridPart(withoutEngine, 'engine', 4, 0);
+    const stats = gridBuildStats(gridForModel(roofEngine));
+    expect(stats.loosePieces).toBe(1);
+    expect(stats.engineForceN).toBe(0);
+    const withExtraSeat = buyPart(roofEngine, 'seat');
+    expect(() => placeGridPart(withExtraSeat, 'seat', 4, 0)).toThrow('ocupado');
+  });
+
+  it('mueve una pieza colocada sin duplicarla ni consumir inventario', () => {
+    const initial = createInitialGameModel();
+    const moved = moveGridPart(initial, 'engine-1', 5, 1);
+    expect(gridForModel(moved).find((item) => item.id === 'engine-1')).toMatchObject({
+      column: 5,
+      row: 1,
+    });
+    expect(gridForModel(moved).filter((item) => item.kind === 'engine')).toHaveLength(1);
+    expect(() => moveGridPart(moved, 'engine-1', 3, 3)).toThrow('ocupado');
   });
 
   it('vende una pieza usada libre con reembolso parcial', () => {

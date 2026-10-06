@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FIXED_STEP_SECONDS } from '../core/fixedStepClock';
+import { add, rotate } from '../core/vector2';
+import { buyPart } from '../game/model';
+import { createInitialGameModel, gridBuildStats, gridForModel, placeGridPart } from '../game/model';
 import { createRideWorld } from './demoWorld';
 import { driveForceN } from './driveModel';
 
@@ -46,5 +49,53 @@ describe('mundos de la campaña', () => {
     }
     expect(world.snapshot().body.position.x).toBeGreaterThan(30);
     expect(Math.max(...world.snapshot().terrain.map((segment) => segment.end.y))).toBeGreaterThan(1);
+  });
+
+  it('impide que el chasis atraviese la pista con ruedas desbalanceadas', () => {
+    const world = createRideWorld('primer-recorrido', {
+      wheelOffsets: [{ x: -1.2, y: -0.55 }, { x: 0.9, y: 0.15 }],
+    });
+    for (let index = 0; index < 600; index += 1) world.step(FIXED_STEP_SECONDS);
+    const { body } = world.snapshot();
+    const collider = body.chassisCollider;
+    expect(collider).toBeDefined();
+    if (!collider) return;
+    const lowerCorners = [
+      { x: -collider.halfWidth, y: -collider.halfHeight },
+      { x: collider.halfWidth, y: -collider.halfHeight },
+    ];
+    for (const corner of lowerCorners) {
+      const position = add(body.position,
+        rotate(add(collider.offset, corner), body.angleRadians));
+      expect(position.y).toBeGreaterThanOrEqual(-0.01);
+    }
+  });
+
+  it('mantiene estable la construcción de campaña en la ruta de mercado', () => {
+    let model = { ...createInitialGameModel(), wallet: 200 };
+    model = buyPart(model, 'seat');
+    model = placeGridPart(model, 'seat', 0, 3);
+    for (const [kind, column, row] of [
+      ['roofRack', 3, 2],
+      ['rearCarrier', 8, 4],
+      ['suspension', 3, 5],
+    ] as const) {
+      model = buyPart(model, kind);
+      model = placeGridPart(model, kind, column, row);
+    }
+    const stats = gridBuildStats(gridForModel(model));
+    const world = createRideWorld('dia-de-mercado', {
+      reinforcedSuspension: true,
+      roofRack: true,
+      rearCarrier: true,
+      bodyMassKg: stats.bodyMassKg,
+      centerOfMass: stats.centerOfMass,
+      wheelOffsets: stats.wheelOffsets ?? [],
+    });
+    for (let index = 0; index < 1900; index += 1) {
+      world.applyForce({ x: driveForceN(world.snapshot(), { throttle: 1, braking: false }), y: 0 });
+      expect(() => world.step(FIXED_STEP_SECONDS)).not.toThrow();
+    }
+    expect(world.snapshot().body.position.x).toBeGreaterThan(20);
   });
 });

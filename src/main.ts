@@ -11,7 +11,8 @@ if (!root) throw new Error('No existe el contenedor principal #app.');
 
 const controller = new AppController(new LocalSaveRepository(window.localStorage));
 const view = createAppView(root, (action) => controller.dispatch(action));
-const renderer = createCanvasRenderer(view.canvas);
+const renderer = createCanvasRenderer(view.canvas, (requestId) =>
+  controller.dispatch({ type: 'COLLECT_REQUEST', requestId }));
 const clock = new FixedStepClock();
 let previousTime: number | null = null;
 

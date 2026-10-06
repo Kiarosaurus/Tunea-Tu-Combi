@@ -39,6 +39,7 @@ export interface LevelOneEquipment {
   readonly rearCarrier?: boolean;
   readonly bodyMassKg?: number;
   readonly centerOfMass?: { readonly x: number; readonly y: number };
+  readonly wheelOffsets?: readonly { readonly x: number; readonly y: number }[];
 }
 
 export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsWorld {
@@ -48,6 +49,14 @@ export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsW
 export function createRideWorld(levelId: string, equipment: LevelOneEquipment = {}): PhysicsWorld {
   const terrain = terrainForLevel(levelId);
   const centerOfMass = equipment.centerOfMass ?? { x: 0, y: 0 };
+  const configuredWheels = equipment.wheelOffsets;
+  const wheelOffsets = configuredWheels === undefined
+    ? [{ x: -1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y },
+      { x: 1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }]
+    : configuredWheels.length > 0
+      ? configuredWheels
+      : [{ x: -0.85 - centerOfMass.x, y: -0.58 - centerOfMass.y },
+        { x: 0.85 - centerOfMass.x, y: -0.58 - centerOfMass.y }];
   const body: RigidBody = {
     id: `${levelId}-combi`,
     position: { x: 2, y: 2.5 },
@@ -59,15 +68,21 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
     force: { x: 0, y: 0 },
     torqueNm: 0,
     centerOfMassOffset: { ...centerOfMass },
-    wheels: [
-      { offset: { x: -1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }, radius: 0.4,
-        ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}) },
-      { offset: { x: 1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }, radius: 0.4,
-        ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}) },
-    ],
+    chassisCollider: {
+      offset: { x: -centerOfMass.x, y: 0.405 - centerOfMass.y },
+      halfWidth: 1.55,
+      halfHeight: 0.625,
+      frictionCoefficient: 0.38,
+    },
+    wheels: wheelOffsets.map((offset) => ({
+      offset: { ...offset },
+      radius: configuredWheels?.length === 0 ? 0.18 : 0.4,
+      ...(configuredWheels?.length === 0 ? { frictionCoefficient: 0.05 } : {}),
+      ...(equipment.reinforcedSuspension ? { suspension: REINFORCED_SUSPENSION } : {}),
+    })),
   };
   const joints: JointMount[] = [];
-  const threshold = equipment.reinforcedSuspension ? 3000 : 2200;
+  const threshold = equipment.reinforcedSuspension ? 6000 : 2200;
   if (equipment.roofRack) joints.push({ id: 'roofRack',
     offset: { x: -centerOfMass.x, y: 0.75 - centerOfMass.y },
     massKg: partMass('roofRack'), breakImpulseNs: threshold });

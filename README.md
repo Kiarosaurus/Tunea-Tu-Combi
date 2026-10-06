@@ -75,8 +75,9 @@ El mundo físico usa metros, kilogramos, segundos y newtons. El eje horizontal
 apunta a la derecha y el vertical hacia arriba. El acumulador ejecuta pasos
 fijos de `1/60 s` con un máximo de 15 pasos por cuadro. El cuerpo rígido tiene
 masa, inercia, posición, ángulo y velocidades; las fuerzas se integran con
-Euler semiimplícito. Dos círculos representan las ruedas y resuelven contacto
-normal contra segmentos del terreno. Un coeficiente opcional añade un impulso
+Euler semiimplícito. Las ruedas usan círculos y el chasis una caja orientada
+para resolver contacto normal contra segmentos del terreno, incluso cuando la
+combi vuelca o queda apoyada de forma desigual. Un coeficiente opcional añade un impulso
 tangencial limitado por el apoyo de cada rueda. La demo cae por gravedad y
 avanza con una velocidad inicial. La marca de las ruedas gira visualmente según
 la distancia recorrida. Durante el nivel 1, un modelo de motor centralizado
@@ -105,16 +106,27 @@ pasajero debe comprar y colocar un segundo asiento en el taller. Las compras
 recientes pueden devolverse por su precio completo antes del recorrido; una
 pieza usada libre se vende por el 70 % redondeado. El kit básico no se vende.
 
-En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
-`Espacio` frena y `E` recoge o baja al pasajero cercano. También hay botones
-visibles para estas acciones. `Esc` pausa, `R` reinicia con confirmación y `F1`
+En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
+pueden moverse entre celdas. La franja coloreada representa el chasis que
+asegura las piezas conectadas.
+
+En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa y
+`Espacio` frena. Los pasajeros aparecen junto a la pista y se recogen haciendo
+clic directamente sobre ellos; al llegar a su parada bajan automáticamente y
+liberan el asiento. `E` se conserva como alternativa de teclado y para las
+cargas. `Esc` pausa, `R` reinicia con confirmación y `F1`
 alterna la depuración gráfica. El menú permite reducir el movimiento; la opción
 se conserva en el guardado local.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
 incluyen pasajeros y una carga para parrilla o scooter posterior. Su masa e
 inercia se agregan mientras están a bordo; una carga se pierde si rompe su
-unión. La cuota del primer recorrido es S/ 25. Solo el dinero entregado al destino se
+unión. Las tarifas están entre S/ 1 y S/ 5 según la distancia y las cuotas se
+ajustan a esos importes. Solo el dinero entregado al destino se
 acredita al ganar; fallar conserva inventario y progreso previo.
+
+La franja superior resume la ruta CR27 Comas - S.M.P. mediante una selección
+de paraderos limeños, muestra el avance de la combi, la capacidad ocupada y
+fichas mínimas de los pasajeros a bordo con destino, masa y tarifa.
 
 La subida al cerro introduce una pendiente prolongada y tres entregas. El día
 de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,

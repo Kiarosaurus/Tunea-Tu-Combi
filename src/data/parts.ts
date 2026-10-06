@@ -31,6 +31,6 @@ export const PART_CATALOG: readonly PartDefinition[] = [
     function: 'Sostiene carga superior', effect: 'Carga de techo +1', space: 'Exterior superior' },
   { kind: 'rearCarrier', name: 'Portacarga posterior', price: 35, massKg: 34, level: 1,
     function: 'Transporta un scooter', effect: 'Scooter +1', space: 'Exterior posterior' },
-  { kind: 'suspension', name: 'Suspensión reforzada', price: 40, massKg: 24, level: 1,
+  { kind: 'suspension', name: 'Suspensión reforzada', price: 35, massKg: 24, level: 1,
     function: 'Absorbe impactos', effect: 'Uniones más resistentes', space: 'Inferior' },
 ];

@@ -7,12 +7,20 @@ import {
   createDemoGameModel,
   createInitialGameModel,
   emptyInventory,
+  gridBuildStats,
+  gridForModel,
+  gridVehicleCapacity,
+  moveGridPart,
+  placeGridPart,
+  removeGridPart,
+  securedGridPlacements,
   vehicleCapacity,
   placePart,
   removePart,
   returnPurchase,
   sellPart,
   validateBuild,
+  validateGridBuild,
   type AnchorId,
   type GameModel,
 } from '../game/model';
@@ -31,6 +39,9 @@ export type AppAction =
   | { readonly type: 'BUY_PART'; readonly kind: PartKind }
   | { readonly type: 'PLACE_PART'; readonly kind: PartKind; readonly anchor: AnchorId }
   | { readonly type: 'REMOVE_PART'; readonly anchor: AnchorId }
+  | { readonly type: 'PLACE_GRID_PART'; readonly kind: PartKind; readonly column: number; readonly row: number }
+  | { readonly type: 'MOVE_GRID_PART'; readonly placementId: string; readonly column: number; readonly row: number }
+  | { readonly type: 'REMOVE_GRID_PART'; readonly placementId: string }
   | { readonly type: 'RETURN_PURCHASE'; readonly kind: PartKind }
   | { readonly type: 'SELL_PART'; readonly kind: PartKind }
   | { readonly type: 'CLEAR_OPTIONAL_PARTS' }
@@ -59,6 +70,7 @@ export interface AppSnapshot {
   readonly ride: RideSnapshot | null;
   readonly vehicleX: number;
   readonly speedMps: number;
+  readonly passengerCapacity: number;
   readonly message: string;
   readonly won: boolean | null;
   readonly saveRecovered: boolean;
@@ -88,6 +100,7 @@ export class AppController {
       ownedParts: saved.ownedParts,
       pendingPurchases: saved.pendingPurchases,
       workshopBuild: saved.workshopBuild,
+      ...(saved.workshopGrid ? { workshopGrid: saved.workshopGrid } : {}),
       unlockedLevel: saved.unlockedLevel,
       completedLevels: saved.completedLevels,
     } : createInitialGameModel();
@@ -108,6 +121,9 @@ export class AppController {
       ride: this.#ride?.snapshot ?? null,
       vehicleX: world.body.position.x,
       speedMps: world.body.velocity.x,
+      passengerCapacity: this.#model.workshopGrid
+        ? gridVehicleCapacity(gridForModel(this.#model)).passenger
+        : vehicleCapacity(this.#model.workshopBuild).passenger,
       message: this.#message,
       won: this.#won,
       saveRecovered: this.#repository.recovered,
@@ -130,9 +146,17 @@ export class AppController {
   update(durationSeconds: number): void {
     if (this.#machine.state === 'PAUSED' || this.#machine.state === 'RESULTS') return;
     if (this.#machine.state === 'PLAYING' && this.#ride) {
+      const build = gridBuildStats(gridForModel(this.#model));
+      const wheelCount = build.wheelOffsets?.length ?? 0;
       const driveForce = driveForceN(this.#world.snapshot(), {
         throttle: this.#throttle,
         braking: this.#braking,
+      }, {
+        maxEngineForceN: wheelCount > 0 ? build.engineForceN : 0,
+        maxSpeedMps: 5.5,
+        brakingForceN: wheelCount > 0 ? 3000 : 800,
+        rollingResistanceNPerMps: wheelCount > 0 ? 125 : 900,
+        tractionCoefficient: wheelCount > 0 ? 0.72 : 0.04,
       });
       this.#world.applyForce({ x: driveForce, y: 0 });
       try {
@@ -141,6 +165,12 @@ export class AppController {
           if (this.#ride.lose(requestId)) this.#message = 'Una carga se desprendió por el impacto.';
         }
         const world = this.#world.snapshot();
+        const arrivals = this.#ride.deliverArrived(world.body.position.x);
+        for (const arrival of arrivals) this.#world.detachPayload(arrival.requestId);
+        if (arrivals.length > 0) {
+          const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
+          this.#message = `Pasajero en destino: S/ ${totalFare}. Asiento libre.`;
+        }
         this.#ride.advance(durationSeconds, world.body.position.x, world.body.angleRadians,
           world.joints.filter((joint) => joint.broken).length);
       } catch {
@@ -189,6 +219,15 @@ export class AppController {
         return;
       case 'REMOVE_PART':
         this.#mutateModel(removePart(this.#model, action.anchor));
+        return;
+      case 'PLACE_GRID_PART':
+        this.#mutateModel(placeGridPart(this.#model, action.kind, action.column, action.row));
+        return;
+      case 'MOVE_GRID_PART':
+        this.#mutateModel(moveGridPart(this.#model, action.placementId, action.column, action.row));
+        return;
+      case 'REMOVE_GRID_PART':
+        this.#mutateModel(removeGridPart(this.#model, action.placementId));
         return;
       case 'RETURN_PURCHASE':
         this.#mutateModel(returnPurchase(this.#model, action.kind));
@@ -282,7 +321,9 @@ export class AppController {
     if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller antes de iniciar.');
     const level = LEVELS.find((candidate) => candidate.id === this.#selectedLevelId);
     if (!level) throw new Error('Este recorrido no está disponible.');
-    const issue = validateBuild(this.#model.workshopBuild);
+    const issue = this.#model.workshopGrid
+      ? validateGridBuild(gridForModel(this.#model))
+      : validateBuild(this.#model.workshopBuild);
     if (issue) throw new Error(issue);
     this.#createRide(level.id);
     this.#model = { ...this.#model, pendingPurchases: emptyInventory() };
@@ -293,20 +334,30 @@ export class AppController {
   #createRide(levelId: string): void {
     const level = LEVELS.find((candidate) => candidate.id === levelId);
     if (!level) throw new Error('Este recorrido no está disponible.');
-    const stats = buildStats(this.#model.workshopBuild);
+    const grid = gridForModel(this.#model);
+    const stats = gridBuildStats(grid);
+    const secured = securedGridPlacements(grid);
     this.#world = createRideWorld(level.id, {
-      reinforcedSuspension: this.#model.workshopBuild.suspension === 'suspension',
-      roofRack: this.#model.workshopBuild.roof === 'roofRack',
-      rearCarrier: this.#model.workshopBuild.rearCarrier === 'rearCarrier',
+      reinforcedSuspension: secured.some((item) => item.kind === 'suspension'),
+      roofRack: secured.some((item) => item.kind === 'roofRack'),
+      rearCarrier: secured.some((item) => item.kind === 'rearCarrier'),
       bodyMassKg: stats.bodyMassKg,
       centerOfMass: stats.centerOfMass,
+      wheelOffsets: stats.wheelOffsets ?? [],
     });
     this.#ride = new RideSession(level.seed, generateRequests(level.id, level.seed),
-      level.durationSeconds, level.finishX);
+      level.durationSeconds, level.finishX, stats.loosePieces ?? 0);
     this.#throttle = 0;
     this.#braking = false;
     this.#won = null;
-    this.#message = '';
+    const wheelCount = stats.wheelOffsets?.length ?? 0;
+    this.#message = stats.loosePieces
+      ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión se desprendieron al arrancar.`
+      : stats.engineForceN === 0
+        ? 'La ruta inició, pero sin motor la combi no puede acelerar.'
+        : wheelCount === 0
+          ? 'La ruta inició, pero sin ruedas no hay tracción.'
+          : '';
   }
 
   #restartRide(): void {
@@ -323,9 +374,13 @@ export class AppController {
     if (this.#machine.state !== 'PLAYING' || !this.#ride) throw new Error('No hay recorrido activo.');
     const request = this.#ride.snapshot.requests.find((item) => item.request.id === requestId)?.request;
     this.#ride.collect(requestId, this.#world.snapshot().body.position.x,
-      vehicleCapacity(this.#model.workshopBuild));
+      this.#model.workshopGrid
+        ? gridVehicleCapacity(gridForModel(this.#model))
+        : vehicleCapacity(this.#model.workshopBuild));
     if (request) {
-      const centerOfMass = buildStats(this.#model.workshopBuild).centerOfMass;
+      const centerOfMass = this.#model.workshopGrid
+        ? gridBuildStats(gridForModel(this.#model)).centerOfMass
+        : buildStats(this.#model.workshopBuild).centerOfMass;
       this.#world.attachPayload(request.id, request.massKg,
         payloadOffset(request.kind, centerOfMass), payloadJoint(request.kind));
     }

@@ -13,8 +13,8 @@ describe('primer recorrido', () => {
     expect(ride.snapshot.maximumPayloadMassKg).toBeGreaterThan(0);
     expect(ride.snapshot.deliveredRevenue).toBe(0);
     expect(() => ride.deliver(6)).toThrow('destino');
-    expect(ride.deliver(12)).toBe(15);
-    expect(ride.snapshot.deliveredRevenue).toBe(15);
+    expect(ride.deliver(12)).toBe(3);
+    expect(ride.snapshot.deliveredRevenue).toBe(3);
   });
 
   it('exige el soporte que corresponde a una carga', () => {
@@ -57,9 +57,19 @@ describe('primer recorrido', () => {
     const initial = createInitialGameModel();
     const result = applyRideResult(initial, ride.snapshot, 'primer-recorrido');
     expect(result.won).toBe(true);
-    expect(result.model.wallet).toBe(130);
+    expect(result.model.wallet).toBe(106);
     expect(result.model.unlockedLevel).toBe(2);
     expect(result.model.completedLevels['primer-recorrido']?.bestDelivered).toBe(2);
+  });
+
+  it('baja automáticamente al pasajero y libera el asiento en su destino', () => {
+    const ride = new RideSession();
+    ride.collect('primer-pasajero', 5, oneSeat);
+    expect(ride.deliverArrived(8)).toEqual([]);
+    expect(ride.deliverArrived(12)).toEqual([{ requestId: 'primer-pasajero', fare: 3 }]);
+    expect(ride.snapshot.requests.find((item) => item.request.id === 'primer-pasajero')?.status)
+      .toBe('delivered');
+    expect(() => ride.collect('segundo-pasajero', 15, oneSeat)).not.toThrow();
   });
 
   it('fallar no acredita ingreso provisional ni desbloquea', () => {

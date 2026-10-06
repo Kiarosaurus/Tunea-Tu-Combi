@@ -15,6 +15,11 @@ export interface RequestProgress {
   readonly status: RequestStatus;
 }
 
+export interface CompletedDelivery {
+  readonly requestId: string;
+  readonly fare: number;
+}
+
 export interface RideSnapshot {
   readonly remainingSeconds: number;
   readonly deliveredRevenue: number;
@@ -42,11 +47,16 @@ export class RideSession {
   #finished = false;
 
   constructor(seed = 'primer-recorrido-base', requests = generateLevelOneRequests(seed),
-    durationSeconds = RIDE_DURATION_SECONDS, finishX = LEVEL_ONE_FINISH_X) {
-    if (!(durationSeconds > 0) || !(finishX > 0)) throw new Error('El intento requiere duración y meta válidas.');
+    durationSeconds = RIDE_DURATION_SECONDS, finishX = LEVEL_ONE_FINISH_X,
+    initialLostPieces = 0) {
+    if (!(durationSeconds > 0) || !(finishX > 0) ||
+      !Number.isInteger(initialLostPieces) || initialLostPieces < 0) {
+      throw new Error('El intento requiere duración, meta y piezas válidas.');
+    }
     this.#seed = seed;
     this.#remainingSeconds = durationSeconds;
     this.#finishX = finishX;
+    this.#lostPieces = initialLostPieces;
     this.#requests = requests.map((request) => ({ request, status: 'waiting' }));
   }
 
@@ -105,11 +115,17 @@ export class RideSession {
     const progress = this.#requests.find((item) => item.status === 'onboard' &&
       Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS);
     if (!progress) throw new Error('No hay un destino de pasajero cercano.');
-    const fare = requestFare(progress.request);
-    this.#setStatus(progress.request.id, 'delivered');
-    this.#deliveredRevenue += fare;
-    this.#deliveredCount += 1;
-    return fare;
+    return this.#completeDelivery(progress.request);
+  }
+
+  deliverArrived(vehicleX: number): readonly CompletedDelivery[] {
+    if (this.#finished) return [];
+    const arrived = this.#requests.filter((item) => item.status === 'onboard' &&
+      Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS);
+    return arrived.map((progress) => ({
+      requestId: progress.request.id,
+      fare: this.#completeDelivery(progress.request),
+    }));
   }
 
   lose(requestId: string): boolean {
@@ -123,6 +139,14 @@ export class RideSession {
     this.#requests = this.#requests.map((progress) =>
       progress.request.id === requestId ? { ...progress, status } : progress,
     );
+  }
+
+  #completeDelivery(request: RideRequest): number {
+    const fare = requestFare(request);
+    this.#setStatus(request.id, 'delivered');
+    this.#deliveredRevenue += fare;
+    this.#deliveredCount += 1;
+    return fare;
   }
 }
 

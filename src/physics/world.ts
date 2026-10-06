@@ -8,6 +8,13 @@ export interface WheelCollider {
   readonly suspension?: SuspensionParameters;
 }
 
+export interface BoxCollider {
+  readonly offset: Vector2;
+  readonly halfWidth: number;
+  readonly halfHeight: number;
+  readonly frictionCoefficient?: number;
+}
+
 export interface SuspensionParameters {
   readonly restLengthM: number;
   readonly maxCompressionM: number;
@@ -31,6 +38,7 @@ export interface RigidBody {
   force: Vector2;
   torqueNm: number;
   readonly wheels: readonly WheelCollider[];
+  readonly chassisCollider?: BoxCollider;
   readonly centerOfMassOffset?: Vector2;
 }
 
@@ -132,7 +140,8 @@ export class PhysicsWorld {
     body.torqueNm = 0;
 
     const contactImpulses = new Map<number, ContactImpulses>();
-    // Dos pasadas reducen la penetración cuando las dos ruedas tocan el suelo.
+    const chassisImpulses = new Map<string, ContactImpulses>();
+    // Dos pasadas reducen la penetración de ruedas y carrocería contra la pista.
     for (let pass = 0; pass < 2; pass += 1) {
       for (let wheelIndex = 0; wheelIndex < body.wheels.length; wheelIndex += 1) {
         const wheel = body.wheels[wheelIndex];
@@ -140,15 +149,22 @@ export class PhysicsWorld {
         for (const segment of this.#terrain) {
           const contact = findContact(body, wheel, segment, wheelIndex);
           if (contact) {
-            const impulses = resolveContact(body, contact, wheel, durationSeconds, pass === 0);
+            const impulses = resolveContact(body, contact, wheel.frictionCoefficient,
+              durationSeconds, pass === 0, body.wheels.length);
             if (pass === 0) contactImpulses.set(wheelIndex, impulses);
             this.#breakOverloadedJoints(impulses.normalImpulseNs);
           }
         }
       }
+      for (const [contactId, contact] of findChassisContacts(body, this.#terrain)) {
+        const impulses = resolveContact(body, contact,
+          body.chassisCollider?.frictionCoefficient, durationSeconds, pass === 0, 4);
+        if (pass === 0) chassisImpulses.set(contactId, impulses);
+        this.#breakOverloadedJoints(impulses.normalImpulseNs);
+      }
     }
 
-    this.#contacts = body.wheels.flatMap((wheel, wheelIndex) =>
+    const wheelContacts = body.wheels.flatMap((wheel, wheelIndex) =>
       this.#terrain.flatMap((segment) => {
         const contact = findContact(body, wheel, segment, wheelIndex);
         if (!contact) return [];
@@ -158,6 +174,13 @@ export class PhysicsWorld {
           frictionImpulseNs: impulses?.frictionImpulseNs ?? 0 }];
       }),
     );
+    const chassisContacts = findChassisContacts(body, this.#terrain).map(([contactId, contact]) => {
+      const impulses = chassisImpulses.get(contactId);
+      return { ...contact,
+        normalImpulseNs: impulses?.normalImpulseNs ?? 0,
+        frictionImpulseNs: impulses?.frictionImpulseNs ?? 0 };
+    });
+    this.#contacts = [...wheelContacts, ...chassisContacts];
 
     if (!isFiniteBody(body)) throw new Error('La simulación produjo un estado no finito.');
   }
@@ -251,6 +274,10 @@ export class PhysicsWorld {
           offset: { ...wheel.offset },
           ...(wheel.suspension ? { suspension: { ...wheel.suspension } } : {}),
         })),
+        ...(body.chassisCollider ? { chassisCollider: {
+          ...body.chassisCollider,
+          offset: { ...body.chassisCollider.offset },
+        } } : {}),
         ...(body.centerOfMassOffset ? { centerOfMassOffset: { ...body.centerOfMassOffset } } : {}),
       },
       terrain: this.#terrain.map((segment) => ({ start: { ...segment.start }, end: { ...segment.end } })),
@@ -294,6 +321,44 @@ function findContact(
     normalImpulseNs: 0, frictionImpulseNs: 0 };
 }
 
+function findChassisContacts(body: RigidBody,
+  terrain: readonly TerrainSegment[]): readonly [string, WheelContact][] {
+  const collider = body.chassisCollider;
+  if (!collider) return [];
+  const localCorners: readonly Vector2[] = [
+    { x: -collider.halfWidth, y: -collider.halfHeight },
+    { x: collider.halfWidth, y: -collider.halfHeight },
+    { x: -collider.halfWidth, y: collider.halfHeight },
+    { x: collider.halfWidth, y: collider.halfHeight },
+  ];
+  const contacts: [string, WheelContact][] = [];
+  for (const [cornerIndex, corner] of localCorners.entries()) {
+    const point = add(body.position, rotate(add(collider.offset, corner), body.angleRadians));
+    for (const [segmentIndex, segment] of terrain.entries()) {
+      const tangent = subtract(segment.end, segment.start);
+      const tangentLengthSquared = dot(tangent, tangent);
+      const rawProjection = dot(subtract(point, segment.start), tangent) / tangentLengthSquared;
+      if (rawProjection < 0 || rawProjection > 1) continue;
+      const nearest = add(segment.start, scale(tangent, rawProjection));
+      const upwardNormal = {
+        x: -tangent.y / Math.sqrt(tangentLengthSquared),
+        y: tangent.x / Math.sqrt(tangentLengthSquared),
+      };
+      const distance = dot(subtract(point, nearest), upwardNormal);
+      if (distance >= 0) continue;
+      contacts.push([`${cornerIndex}:${segmentIndex}`, {
+        point: nearest,
+        normal: upwardNormal,
+        penetration: -distance,
+        wheelIndex: -1,
+        normalImpulseNs: 0,
+        frictionImpulseNs: 0,
+      }]);
+    }
+  }
+  return contacts;
+}
+
 interface ContactImpulses {
   readonly normalImpulseNs: number;
   readonly frictionImpulseNs: number;
@@ -302,9 +367,10 @@ interface ContactImpulses {
 function resolveContact(
   body: RigidBody,
   contact: WheelContact,
-  wheel: WheelCollider,
+  frictionCoefficient: number | undefined,
   durationSeconds: number,
   applyFriction: boolean,
+  supportContactCount: number,
 ): ContactImpulses {
   const offset = subtract(contact.point, body.position);
   const pointVelocity = add(body.velocity, { x: -body.angularVelocity * offset.y, y: body.angularVelocity * offset.x });
@@ -318,7 +384,7 @@ function resolveContact(
     body.velocity = add(body.velocity, scale(contact.normal, normalImpulse / body.massKg));
     body.angularVelocity += (lever * normalImpulse) / body.inertiaKgM2;
   }
-  if (applyFriction && wheel.frictionCoefficient) {
+  if (applyFriction && frictionCoefficient) {
     const tangent = { x: contact.normal.y, y: -contact.normal.x };
     const tangentLever = cross(offset, tangent);
     const inverseEffectiveMass = 1 / body.massKg + (tangentLever * tangentLever) / body.inertiaKgM2;
@@ -329,8 +395,8 @@ function resolveContact(
     const desiredImpulse = -dot(updatedPointVelocity, tangent) / inverseEffectiveMass;
     // La gravedad aporta soporte aun cuando la rueda ya reposaba en el suelo.
     const supportImpulse = body.massKg * Math.max(0, -dot(GRAVITY, contact.normal))
-      * durationSeconds / body.wheels.length;
-    const frictionLimit = wheel.frictionCoefficient * Math.max(normalImpulse, supportImpulse);
+      * durationSeconds / supportContactCount;
+    const frictionLimit = frictionCoefficient * Math.max(normalImpulse, supportImpulse);
     frictionImpulse = clamp(desiredImpulse, -frictionLimit, frictionLimit);
     body.velocity = add(body.velocity, scale(tangent, frictionImpulse / body.massKg));
     body.angularVelocity += (tangentLever * frictionImpulse) / body.inertiaKgM2;
@@ -348,6 +414,13 @@ function validateBody(body: RigidBody): void {
       (wheel.frictionCoefficient !== undefined &&
         (!Number.isFinite(wheel.frictionCoefficient) || wheel.frictionCoefficient < 0 || wheel.frictionCoefficient > 2)) ||
       (wheel.suspension !== undefined && !validSuspension(wheel.suspension))) ||
+    (body.chassisCollider !== undefined && (!(body.chassisCollider.halfWidth > 0) ||
+      !(body.chassisCollider.halfHeight > 0) ||
+      ![body.chassisCollider.offset.x, body.chassisCollider.offset.y,
+        body.chassisCollider.halfWidth, body.chassisCollider.halfHeight].every(Number.isFinite) ||
+      (body.chassisCollider.frictionCoefficient !== undefined &&
+        (!Number.isFinite(body.chassisCollider.frictionCoefficient) ||
+          body.chassisCollider.frictionCoefficient < 0 || body.chassisCollider.frictionCoefficient > 2)))) ||
     (body.centerOfMassOffset !== undefined &&
       ![body.centerOfMassOffset.x, body.centerOfMassOffset.y].every(Number.isFinite)) ||
     !isFiniteBody(body)) {
