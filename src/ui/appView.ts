@@ -5,7 +5,10 @@ import { PART_CATALOG, type PartKind } from '../data/parts';
 import {
   BUILD_GRID_COLUMNS,
   BUILD_GRID_ROWS,
+  DRIVER_SEAT_ID,
   PART_FOOTPRINTS,
+  SELL_REFUND_RATE,
+  createInitialGameModel,
   gridBuildStats,
   gridForModel,
   gridPlacementFits,
@@ -392,19 +395,28 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   for (const placement of grid) {
     const footprint = PART_FOOTPRINTS[placement.kind];
     const secured = securedIds.has(placement.id);
-    const button = actionButton('', `grid-piece piece-${placement.kind} ${secured ? 'is-secured' : 'is-loose'}`, () => {
+    const isDriverSeat = placement.id === DRIVER_SEAT_ID;
+    const button = actionButton('', `grid-piece piece-${placement.kind} ${secured ? 'is-secured' : 'is-loose'} ${isDriverSeat ? 'is-driver-seat' : ''}`, () => {
+      if (isDriverSeat) {
+        refreshSelection('El asiento del conductor es fijo: arrástralo para moverlo.');
+        return;
+      }
       workshopUi.selectedPart = placement.kind;
       dispatch({ type: 'REMOVE_GRID_PART', placementId: placement.id });
     });
     button.style.gridColumn = `${placement.column + 1} / span ${footprint.columns}`;
     button.style.gridRow = `${placement.row + 1} / span ${footprint.rows}`;
-    button.setAttribute('aria-label', `Retirar ${partName(placement.kind)} de columna ${placement.column + 1}, fila ${placement.row + 1}`);
-    button.title = secured ? 'Conectada al chasis' : 'Suelta: se caerá al iniciar';
+    button.setAttribute('aria-label', isDriverSeat
+      ? `Mover asiento del conductor de columna ${placement.column + 1}, fila ${placement.row + 1}`
+      : `Retirar ${partName(placement.kind)} de columna ${placement.column + 1}, fila ${placement.row + 1}`);
+    button.title = isDriverSeat ? 'Conductor: se puede mover, no guardar'
+      : secured ? 'Conectada al chasis' : 'Suelta: se caerá al iniciar';
     button.draggable = true;
     button.append(
       textElement('span', 'grid-piece-icon', partIcon(placement.kind)),
+      ...(isDriverSeat ? [textElement('span', 'grid-driver-person', '')] : []),
       textElement('span', 'grid-piece-name', shortPartName(placement.kind)),
-      textElement('span', 'grid-piece-state', secured ? 'CONECTADA' : 'SUELTA'),
+      textElement('span', 'grid-piece-state', isDriverSeat ? 'CONDUCTOR' : secured ? 'CONECTADA' : 'SUELTA'),
     );
     button.addEventListener('dragover', (event) => {
       event.preventDefault();
@@ -447,8 +459,12 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   );
   const trayGrid = document.createElement('div');
   trayGrid.className = 'parts-tray-grid';
+  const baseInventory = createInitialGameModel().ownedParts;
   for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
     const available = freeCount(part.kind);
+    const canSell = available > 0 && snapshot.game.ownedParts[part.kind] > baseInventory[part.kind];
+    const card = document.createElement('div');
+    card.className = 'part-card-wrap';
     const button = actionButton('', 'part-card', () => {
       if (available < 1) {
         if (snapshot.game.wallet < part.price) {
@@ -489,7 +505,17 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       hideDragPreview();
     });
     inventoryButtons.push(button);
-    trayGrid.append(button);
+    card.append(button);
+    if (canSell) {
+      const resale = Math.round(part.price * SELL_REFUND_RATE);
+      const sell = actionButton(`Vender S/ ${resale}`, 'part-sell-action', () => {
+        workshopUi.selectedPart = null;
+        dispatch({ type: 'SELL_PART', kind: part.kind });
+      });
+      sell.setAttribute('aria-label', `Vender ${part.name} libre por S/ ${resale}`);
+      card.append(sell);
+    }
+    trayGrid.append(card);
   }
   inventory.append(trayGrid);
   builder.append(vehicleSection, inventory);
@@ -577,7 +603,8 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   pause.setAttribute('aria-label', 'Pausa');
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
-  panel.append(delivery, message, createDriveControls(dispatch), pause);
+  panel.append(delivery, message,
+    textElement('p', 'pickup-key-hint', 'ABAJO RECOGER'), createDriveControls(dispatch), pause);
   return panel;
 }
 
@@ -627,6 +654,9 @@ function createDriveControls(dispatch: (action: AppAction) => void): HTMLElement
       () => dispatch({ type: 'SET_THROTTLE', value: 1 }),
       () => dispatch({ type: 'SET_THROTTLE', value: 0 })),
   );
+  const brakeEffectiveness = textElement('strong', 'brake-effectiveness', 'FRENO 0 %');
+  brakeEffectiveness.dataset.ui = 'brake-effectiveness';
+  controls.append(brakeEffectiveness);
   return controls;
 }
 
@@ -640,6 +670,7 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
   setUiText(screen, 'engine', `${snapshot.engineHealthPercent} %`);
+  setUiText(screen, 'brake-effectiveness', `FRENO ${snapshot.brakeEffectivenessPercent} %`);
   const engineLoad = screen.querySelector<HTMLElement>('[data-ui="engine-load"]');
   if (engineLoad) {
     engineLoad.style.setProperty('--engine-load', `${snapshot.engineLoadPercent}%`);
@@ -688,11 +719,15 @@ function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement 
 function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   const panel = panelElement('results-panel');
+  panel.classList.toggle('is-game-over', snapshot.engineExploded);
   panel.append(
-    textElement('p', 'eyebrow', 'Resultado del turno'),
-    textElement('h1', 'section-title', snapshot.won ? 'Ruta completa' : 'Por poco'),
+    textElement('p', 'eyebrow', snapshot.engineExploded ? 'Motor destruido' : 'Resultado del turno'),
+    textElement('h1', 'section-title', snapshot.engineExploded
+      ? 'GAME OVER'
+      : snapshot.won ? 'Ruta completa' : 'Por poco'),
     textElement('p', 'hero-copy', snapshot.message),
   );
+  if (snapshot.engineExploded) panel.append(textElement('div', 'game-over-explosion', 'BOOM'));
   const stars = document.createElement('div');
   stars.className = 'result-stars';
   stars.setAttribute('aria-label', `${snapshot.stars ?? 0} de 3 estrellas`);

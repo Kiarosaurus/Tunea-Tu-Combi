@@ -82,6 +82,7 @@ export interface WorldSnapshot {
 
 // El mundo usa metros, kilogramos, segundos y newtons; el eje y apunta hacia arriba.
 const GRAVITY: Vector2 = { x: 0, y: -9.81 };
+const MOUNTED_MASS_TORQUE_FACTOR = 0.35;
 const MAX_SPEED = 30;
 const MAX_ANGULAR_SPEED = 8;
 const MAX_COORDINATE = 1000;
@@ -129,6 +130,11 @@ export class PhysicsWorld {
 
     const body = this.#body;
     this.#applySuspensionForces();
+    for (const payload of this.#payloads.values()) {
+      const gravityAtPayload = scale(GRAVITY, payload.massKg);
+      body.torqueNm += cross(rotate(payload.offset, body.angleRadians), gravityAtPayload) *
+        MOUNTED_MASS_TORQUE_FACTOR;
+    }
     const acceleration = add(GRAVITY, scale(body.force, 1 / body.massKg));
     body.velocity = add(body.velocity, scale(acceleration, durationSeconds));
     body.angularVelocity += (body.torqueNm / body.inertiaKgM2) * durationSeconds;

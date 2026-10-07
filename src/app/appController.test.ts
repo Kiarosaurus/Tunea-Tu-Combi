@@ -24,7 +24,6 @@ function assembleBaseVehicle(controller: AppController): void {
   controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'wheel', column: 1, row: 5 });
   controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'wheel', column: 7, row: 5 });
   controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'engine', column: 6, row: 3 });
-  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'seat', column: 3, row: 3 });
 }
 
 function addPassengerSeat(controller: AppController): void {
@@ -107,11 +106,25 @@ describe('flujo vertical del primer recorrido', () => {
     expect(reloaded.snapshot.game.workshopBuild.passengerSeat).toBe('seat');
   });
 
-  it('abre cada nivel con la cuadrícula vacía y el kit en la paleta', () => {
+  it('abre cada nivel con el conductor fijo y el resto del kit en la paleta', () => {
     const controller = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(controller, false);
-    expect(gridForModel(controller.snapshot.game)).toEqual([]);
+    expect(gridForModel(controller.snapshot.game)).toEqual([
+      { id: 'seat-1', kind: 'seat', column: 3, row: 3 },
+    ]);
     expect(controller.snapshot.game.ownedParts).toMatchObject({ wheel: 2, engine: 1, seat: 1 });
+  });
+
+  it('cambia el freno entre cuatro intensidades y muestra la activa', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    for (const expected of [25, 50, 75, 100, 25]) {
+      controller.dispatch({ type: 'SET_BRAKE', value: true });
+      expect(controller.snapshot.brakeEffectivenessPercent).toBe(expected);
+      controller.dispatch({ type: 'SET_BRAKE', value: false });
+      expect(controller.snapshot.brakeEffectivenessPercent).toBe(0);
+    }
   });
 
   it('vuelve a acelerar después de frenar y recoger', () => {
@@ -269,12 +282,11 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     expect(controller.snapshot.state).toBe('PLAYING');
 
-    const noSeat = new AppController(new LocalSaveRepository(memoryStorage()));
-    enterWorkshop(noSeat);
-    noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
-    noSeat.dispatch({ type: 'START_RIDE' });
-    expect(noSeat.snapshot.state).toBe('WORKSHOP');
-    expect(noSeat.snapshot.message).toBe('Falta el asiento del conductor.');
+    const fixedSeat = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(fixedSeat);
+    fixedSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
+    expect(fixedSeat.snapshot.state).toBe('WORKSHOP');
+    expect(fixedSeat.snapshot.message).toContain('solo se puede mover');
 
     storage.setItem('tunea-tu-combi:save:v1', '{mal-json');
     const recovered = new AppController(new LocalSaveRepository(storage));
@@ -304,6 +316,21 @@ describe('flujo vertical del primer recorrido', () => {
     for (let index = 0; index < 360; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.engineLoadPercent).toBe(100);
     expect(controller.snapshot.engineHealthPercent).toBeLessThan(100);
+  });
+
+  it('explota al agotar el motor y termina en game over', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller, false);
+    controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'engine', column: 6, row: 3 });
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 3600 && controller.snapshot.state === 'PLAYING'; index += 1) {
+      controller.update(1 / 60);
+    }
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.engineHealthPercent).toBe(0);
+    expect(controller.snapshot.engineExploded).toBe(true);
+    expect(controller.snapshot.message).toContain('explotó');
   });
 
   it('arresta a la combi que retrocede fuera del primer recorrido', () => {

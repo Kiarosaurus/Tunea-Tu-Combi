@@ -121,6 +121,13 @@ describe('PhysicsWorld', () => {
     expect(world.snapshot().payloadMassKg).toBe(0);
   });
 
+  it('la masa de un pasajero fuera del centro genera torque gravitacional', () => {
+    const world = new PhysicsWorld(testBody(), flatGround);
+    world.attachPayload('pasajero-lateral', 80, { x: 1.4, y: 0.2 });
+    world.step(FIXED_STEP_SECONDS);
+    expect(world.snapshot().body.angularVelocity).toBeLessThan(0);
+  });
+
   it('pierde una carga cuando se rompe la unión que la sostiene', () => {
     const body = testBody();
     body.position = { x: 0, y: 0.49 };

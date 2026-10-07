@@ -9,8 +9,10 @@ import {
   emptyInventory,
   gridBuildStats,
   gridForModel,
+  gridPlacementPosition,
   gridVehicleCapacity,
   moveGridPart,
+  passengerSeatPlacements,
   prepareLevelWorkshop,
   placeGridPart,
   removeGridPart,
@@ -81,6 +83,8 @@ export interface AppSnapshot {
   readonly stars: number | null;
   readonly engineHealthPercent: number;
   readonly engineLoadPercent: number;
+  readonly brakeEffectivenessPercent: number;
+  readonly engineExploded: boolean;
   readonly saveRecovered: boolean;
 }
 
@@ -96,11 +100,15 @@ export class AppController {
   #reducedMotion = false;
   #throttle: -1 | 0 | 1 = 0;
   #braking = false;
+  #brakeStrength = 0;
+  #brakePressCount = 0;
   #message = '';
   #won: boolean | null = null;
   #stars: number | null = null;
   #engineHealth = 1;
   #engineLoad = 0;
+  #engineExploded = false;
+  #explosionRemainingSeconds = 0;
   #chassisContactActive = false;
   #uiElapsed = 0;
 
@@ -141,6 +149,8 @@ export class AppController {
       stars: this.#stars,
       engineHealthPercent: Math.round(this.#engineHealth * 100),
       engineLoadPercent: Math.round(this.#engineLoad * 100),
+      brakeEffectivenessPercent: this.#braking ? Math.round(this.#brakeStrength * 100) : 0,
+      engineExploded: this.#engineExploded,
       saveRecovered: this.#repository.recovered,
     };
   }
@@ -161,6 +171,11 @@ export class AppController {
   update(durationSeconds: number): void {
     if (this.#machine.state === 'PAUSED' || this.#machine.state === 'RESULTS') return;
     if (this.#machine.state === 'PLAYING' && this.#ride) {
+      if (this.#engineExploded) {
+        this.#explosionRemainingSeconds = Math.max(0, this.#explosionRemainingSeconds - durationSeconds);
+        if (this.#explosionRemainingSeconds === 0) this.#machine.transition('RESULTS');
+        return;
+      }
       const build = gridBuildStats(gridForModel(this.#model));
       const wheelCount = build.wheelOffsets?.length ?? 0;
       const wheelPenalty = wheelLayoutPenalty(build.wheelOffsets ?? []);
@@ -168,9 +183,13 @@ export class AppController {
         build.engineForceN > 0 && this.#throttle !== 0, durationSeconds);
       this.#engineLoad = engineLoad.load;
       this.#engineHealth = Math.max(0, this.#engineHealth - engineLoad.damage);
+      if (this.#engineHealth === 0) {
+        this.#triggerEngineExplosion();
+        return;
+      }
       const driveForce = driveForceN(this.#world.snapshot(), {
         throttle: this.#throttle,
-        braking: this.#braking,
+        brakeStrength: this.#braking ? this.#brakeStrength : 0,
       }, {
         maxEngineForceN: wheelCount > 0 ? build.engineForceN * this.#engineHealth : 0,
         maxSpeedMps: LEVELS.find((level) => level.id === this.#selectedLevelId)?.maxSpeedMps ?? 5.5,
@@ -186,7 +205,14 @@ export class AppController {
       try {
         this.#world.step(durationSeconds);
         for (const requestId of this.#world.snapshot().lostPayloadIds) {
-          if (this.#ride.lose(requestId)) this.#message = 'Una carga se desprendió por el impacto.';
+          if (this.#ride.lose(requestId)) {
+            const request = this.#ride.snapshot.requests.find((item) =>
+              item.request.id === requestId)?.request;
+            if (request && request.kind !== 'passenger') {
+              this.#world.detachPayload(attendantPayloadId(requestId));
+            }
+            this.#message = 'Una carga se desprendió por el impacto.';
+          }
         }
         const world = this.#world.snapshot();
         if (this.#selectedLevelId === 'primer-recorrido' && world.body.position.x <= LEVEL_ONE_ARREST_X) {
@@ -206,8 +232,12 @@ export class AppController {
         this.#engineHealth = damage.health;
         this.#chassisContactActive = chassisContacts.length > 0;
         if (damage.impactApplied) this.#message = `Motor al ${Math.round(this.#engineHealth * 100)} %.`;
+        if (this.#engineHealth === 0) {
+          this.#triggerEngineExplosion();
+          return;
+        }
         const arrivals = this.#ride.deliverArrived(world.body.position.x);
-        for (const arrival of arrivals) this.#world.detachPayload(arrival.requestId);
+        for (const arrival of arrivals) this.#detachRequestPayload(arrival.requestId);
         if (arrivals.length > 0) {
           const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
           this.#message = `Pasajero en destino: S/ ${totalFare}. Asiento libre.`;
@@ -287,8 +317,14 @@ export class AppController {
         if (action.value !== 0) this.#braking = false;
         return;
       case 'SET_BRAKE':
+        if (action.value && !this.#braking) {
+          const strengths = [0.25, 0.5, 0.75, 1] as const;
+          this.#brakeStrength = strengths[this.#brakePressCount % strengths.length] ?? 0.25;
+          this.#brakePressCount += 1;
+        }
         this.#braking = action.value;
         if (action.value) this.#throttle = 0;
+        this.#notify();
         return;
       case 'COLLECT_REQUEST':
         this.#collect(action.requestId);
@@ -397,10 +433,14 @@ export class AppController {
       level.durationSeconds, level.finishX, stats.loosePieces ?? 0);
     this.#throttle = 0;
     this.#braking = false;
+    this.#brakeStrength = 0;
+    this.#brakePressCount = 0;
     this.#won = null;
     this.#stars = null;
     this.#engineHealth = 1;
     this.#engineLoad = 0;
+    this.#engineExploded = false;
+    this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
     this.#message = stats.loosePieces
@@ -436,11 +476,24 @@ export class AppController {
         ? gridVehicleCapacity(gridForModel(this.#model))
         : vehicleCapacity(this.#model.workshopBuild));
     if (request) {
+      const grid = gridForModel(this.#model);
       const centerOfMass = this.#model.workshopGrid
         ? gridBuildStats(gridForModel(this.#model)).centerOfMass
         : buildStats(this.#model.workshopBuild).centerOfMass;
-      this.#world.attachPayload(request.id, request.massKg,
-        payloadOffset(request.kind, centerOfMass), jointId);
+      const occupiedSeats = this.#ride.snapshot.requests.filter((item) =>
+        item.status === 'onboard').length - 1;
+      const seat = passengerSeatPlacements(grid)[Math.max(0, occupiedSeats)];
+      const seatPosition = seat ? gridPlacementPosition(seat) : undefined;
+      if (request.kind === 'passenger') {
+        this.#world.attachPayload(request.id, request.massKg,
+          passengerPayloadOffset(centerOfMass, seatPosition));
+      } else {
+        this.#world.attachPayload(request.id, request.cargoMassKg,
+          cargoPayloadOffset(request.kind, centerOfMass), jointId);
+        this.#world.attachPayload(attendantPayloadId(request.id),
+          request.massKg - request.cargoMassKg,
+          passengerPayloadOffset(centerOfMass, seatPosition));
+      }
     }
     this.#message = request?.kind === 'passenger'
       ? 'Pasajero a bordo. Llévalo a su destino.'
@@ -454,7 +507,7 @@ export class AppController {
     const request = this.#ride.snapshot.requests.find((item) => item.status === 'onboard' &&
       Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS)?.request;
     const fare = this.#ride.deliver(vehicleX);
-    if (request) this.#world.detachPayload(request.id);
+    if (request) this.#detachRequestPayload(request.id);
     this.#message = `Entrega completada: S/ ${fare}.`;
     this.#notify();
   }
@@ -473,6 +526,15 @@ export class AppController {
     this.#machine.transition('RESULTS');
   }
 
+  #detachRequestPayload(requestId: string): void {
+    const request = this.#ride?.snapshot.requests.find((item) =>
+      item.request.id === requestId)?.request;
+    this.#world.detachPayload(requestId);
+    if (request && request.kind !== 'passenger') {
+      this.#world.detachPayload(attendantPayloadId(requestId));
+    }
+  }
+
   #arrestRide(): void {
     this.#won = false;
     this.#stars = 0;
@@ -480,6 +542,18 @@ export class AppController {
     this.#braking = false;
     this.#message = 'La policía detuvo la combi por salir de la ruta.';
     this.#machine.transition('RESULTS');
+  }
+
+  #triggerEngineExplosion(): void {
+    this.#engineHealth = 0;
+    this.#engineExploded = true;
+    this.#explosionRemainingSeconds = 0.8;
+    this.#won = false;
+    this.#stars = 0;
+    this.#throttle = 0;
+    this.#braking = false;
+    this.#message = 'El motor explotó. La combi quedó fuera de servicio.';
+    this.#notify();
   }
 
   #resetProgress(): void {
@@ -529,8 +603,12 @@ export class AppController {
     this.#world = createDemoWorld();
     this.#throttle = 0;
     this.#braking = false;
+    this.#brakeStrength = 0;
+    this.#brakePressCount = 0;
     this.#engineHealth = 1;
     this.#engineLoad = 0;
+    this.#engineExploded = false;
+    this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
     this.#message = '';
     this.#machine.transition('MENU');
@@ -553,12 +631,23 @@ export class AppController {
   }
 }
 
-function payloadOffset(kind: 'passenger' | 'roofCargo' | 'scooter',
+function passengerPayloadOffset(centerOfMass: { readonly x: number; readonly y: number },
+  seatPosition?: { readonly x: number; readonly y: number }):
+{ readonly x: number; readonly y: number } {
+  return seatPosition
+    ? { x: seatPosition.x - centerOfMass.x, y: seatPosition.y - centerOfMass.y }
+    : { x: -centerOfMass.x, y: 0.2 - centerOfMass.y };
+}
+
+function cargoPayloadOffset(kind: 'roofCargo' | 'scooter',
   centerOfMass: { readonly x: number; readonly y: number }):
 { readonly x: number; readonly y: number } {
   if (kind === 'roofCargo') return { x: -centerOfMass.x, y: 0.75 - centerOfMass.y };
-  if (kind === 'scooter') return { x: -1.7 - centerOfMass.x, y: -centerOfMass.y };
-  return { x: -centerOfMass.x, y: 0.2 - centerOfMass.y };
+  return { x: -1.7 - centerOfMass.x, y: -centerOfMass.y };
+}
+
+function attendantPayloadId(requestId: string): string {
+  return `${requestId}:attendant`;
 }
 
 function payloadJoint(kind: 'passenger' | 'roofCargo' | 'scooter'): string | undefined {

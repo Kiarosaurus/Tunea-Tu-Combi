@@ -30,6 +30,18 @@ describe('driveForceN', () => {
       driveForceN(moving, { throttle: 0, braking: false }));
   });
 
+  it('escala el frenado según el porcentaje seleccionado', () => {
+    const world = createLevelOneWorld();
+    for (let index = 0; index < 90; index += 1) world.step(FIXED_STEP_SECONDS);
+    const snapshot = world.snapshot();
+    const moving = { ...snapshot, body: { ...snapshot.body, velocity: { x: 2, y: 0 } } };
+    const released = driveForceN(moving, { throttle: 0, brakeStrength: 0 });
+    const soft = driveForceN(moving, { throttle: 0, brakeStrength: 0.25 });
+    const full = driveForceN(moving, { throttle: 0, brakeStrength: 1 });
+    expect(soft).toBeLessThan(released);
+    expect(full).toBeLessThan(soft);
+  });
+
   it('usa el apoyo de la suspensión aunque no haya contacto rígido', () => {
     const world = createLevelOneWorld({ reinforcedSuspension: true });
     for (let index = 0; index < 120; index += 1) world.step(FIXED_STEP_SECONDS);

@@ -10,11 +10,12 @@ export interface DriveParameters {
 
 export interface DriveInput {
   readonly throttle: -1 | 0 | 1;
-  readonly braking: boolean;
+  readonly braking?: boolean;
+  readonly brakeStrength?: number;
 }
 
 export const URBAN_ENGINE: DriveParameters = {
-  maxEngineForceN: 2200,
+  maxEngineForceN: 3000,
   maxSpeedMps: 5.5,
   brakingForceN: 3000,
   rollingResistanceNPerMps: 125,
@@ -62,8 +63,10 @@ export function driveForceN(
     Math.sign(speed) === input.throttle
     ? 0
     : input.throttle * parameters.maxEngineForceN;
-  const desiredBrakeForce = input.braking && Math.abs(speed) > 0.02
-    ? -Math.sign(speed) * parameters.brakingForceN
+  const brakeStrength = Math.max(0, Math.min(1,
+    input.brakeStrength ?? (input.braking ? 1 : 0)));
+  const desiredBrakeForce = brakeStrength > 0 && Math.abs(speed) > 0.02
+    ? -Math.sign(speed) * parameters.brakingForceN * brakeStrength
     : 0;
   const contactSupportN = world.contacts.length > 0
     ? world.body.massKg * Math.abs(world.gravity.y) *

@@ -2,6 +2,9 @@ import { PART_CATALOG, type PartKind } from '../data/parts';
 
 export const INITIAL_WALLET = 100;
 export const SELL_REFUND_RATE = 0.7;
+export const DRIVER_SEAT_ID = 'seat-1';
+export const DRIVER_MASS_KG = 70;
+export const BASE_ENGINE_FORCE_N = 3000;
 
 export const ANCHORS = {
   frontWheel: 'wheel',
@@ -155,7 +158,9 @@ export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
     suspension: { id: 'suspension-1', kind: 'suspension', column: 4, row: 5 },
   };
   const ownedParts = { ...base.ownedParts };
-  const workshopGrid: GridPlacement[] = [];
+  const workshopGrid: GridPlacement[] = [
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+  ];
   for (const kind of defaultExtras) {
     const placement = canonicalExtras[kind];
     if (!placement || workshopGrid.some((item) => item.kind === kind && item.id === placement.id)) continue;
@@ -166,7 +171,7 @@ export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
     wallet: buildBudget,
     ownedParts,
     workshopGrid,
-    workshopBuild: {},
+    workshopBuild: { driverSeat: 'seat' },
     unlockedLevel: model.unlockedLevel,
     completedLevels: model.completedLevels,
   };
@@ -209,8 +214,11 @@ export function removePart(model: GameModel, anchor: AnchorId): GameModel {
   if (model.workshopGrid) {
     const matching = model.workshopGrid.filter((item) => item.kind === kind)
       .sort((left, right) => left.column - right.column);
-    const index = anchor === 'frontWheel' || anchor === 'passengerSeat' ? 1 : 0;
-    const placement = matching[index] ?? matching[0];
+    const placement = anchor === 'driverSeat'
+      ? matching.find((item) => item.id === DRIVER_SEAT_ID)
+      : anchor === 'passengerSeat'
+        ? matching.find((item) => item.id !== DRIVER_SEAT_ID)
+        : matching[anchor === 'frontWheel' ? 1 : 0] ?? matching[0];
     if (placement) return removeGridPart(model, placement.id);
   }
   const workshopBuild = Object.fromEntries(
@@ -255,11 +263,13 @@ export function sellPart(model: GameModel, kind: PartKind): GameModel {
     ? model.workshopGrid.filter((item) => item.kind === kind).length
     : Object.values(model.workshopBuild).filter((placedKind) => placedKind === kind).length;
   if (placed >= model.ownedParts[kind]) throw new Error('Retira primero una pieza colocada.');
-  if (model.pendingPurchases[kind] > 0) throw new Error('Devuelve primero la compra reciente.');
   return {
     ...model,
     wallet: model.wallet + Math.round(priceOf(kind) * SELL_REFUND_RATE),
     ownedParts: { ...model.ownedParts, [kind]: model.ownedParts[kind] - 1 },
+    pendingPurchases: model.pendingPurchases[kind] > 0
+      ? { ...model.pendingPurchases, [kind]: model.pendingPurchases[kind] - 1 }
+      : model.pendingPurchases,
   };
 }
 
@@ -297,11 +307,18 @@ export function buildStats(build: SerializedBuild): BuildStats {
     weightedX += part.massKg * position.x;
     weightedY += part.massKg * position.y;
   }
+  if (build.driverSeat === 'seat') {
+    const position = ANCHOR_POSITIONS.driverSeat;
+    massKg += DRIVER_MASS_KG;
+    bodyMassKg += DRIVER_MASS_KG;
+    weightedX += DRIVER_MASS_KG * position.x;
+    weightedY += DRIVER_MASS_KG * position.y;
+  }
   return {
     massKg,
     bodyMassKg,
     centerOfMass: { x: weightedX / massKg, y: weightedY / massKg },
-    engineForceN: build.engine === 'engine' ? 2200 : 0,
+    engineForceN: build.engine === 'engine' ? BASE_ENGINE_FORCE_N : 0,
   };
 }
 
@@ -313,6 +330,17 @@ export function priceOf(kind: PartKind): number {
 
 export function gridForModel(model: GameModel): readonly GridPlacement[] {
   return model.workshopGrid ?? legacyBuildToGrid(model.workshopBuild);
+}
+
+export function gridPlacementPosition(placement: GridPlacement): { readonly x: number; readonly y: number } {
+  return gridPosition(placement);
+}
+
+export function passengerSeatPlacements(grid: readonly GridPlacement[]): readonly GridPlacement[] {
+  const securedIds = new Set(securedGridPlacements(grid).map((placement) => placement.id));
+  return grid.filter((placement) => placement.kind === 'seat' &&
+    placement.id !== DRIVER_SEAT_ID && securedIds.has(placement.id))
+    .sort((left, right) => left.column - right.column || left.row - right.row);
 }
 
 export function placeGridPart(model: GameModel, kind: PartKind, column: number, row: number): GameModel {
@@ -331,6 +359,7 @@ export function placeGridPart(model: GameModel, kind: PartKind, column: number, 
 export function removeGridPart(model: GameModel, placementId: string): GameModel {
   const grid = gridForModel(model);
   if (!grid.some((item) => item.id === placementId)) throw new Error('La pieza ya no está en la cuadrícula.');
+  if (placementId === DRIVER_SEAT_ID) throw new Error('El asiento del conductor solo se puede mover.');
   const workshopGrid = grid.filter((item) => item.id !== placementId);
   return { ...model, workshopGrid, workshopBuild: gridToLegacyBuild(workshopGrid) };
 }
@@ -347,7 +376,9 @@ export function moveGridPart(model: GameModel, placementId: string,
 }
 
 export function validateGridBuild(grid: readonly GridPlacement[]): string | null {
-  if (!grid.some((item) => item.kind === 'seat')) return 'Falta el asiento del conductor.';
+  if (!grid.some((item) => item.id === DRIVER_SEAT_ID && item.kind === 'seat')) {
+    return 'Falta el asiento del conductor.';
+  }
   return null;
 }
 
@@ -377,7 +408,7 @@ export function gridVehicleCapacity(grid: readonly GridPlacement[]): VehicleCapa
   const secured = securedGridPlacements(grid);
   const count = (kind: PartKind): number => secured.filter((item) => item.kind === kind).length;
   return {
-    passenger: Math.max(0, count('seat') - 1),
+    passenger: passengerSeatPlacements(grid).length,
     roofCargo: count('roofRack'),
     scooter: count('rearCarrier'),
   };
@@ -401,13 +432,19 @@ export function gridBuildStats(grid: readonly GridPlacement[]): BuildStats {
     weightedX += part.massKg * position.x;
     weightedY += part.massKg * position.y;
     if (placement.kind === 'wheel') wheelOffsets.push(position);
+    if (placement.id === DRIVER_SEAT_ID) {
+      massKg += DRIVER_MASS_KG;
+      bodyMassKg += DRIVER_MASS_KG;
+      weightedX += DRIVER_MASS_KG * position.x;
+      weightedY += DRIVER_MASS_KG * position.y;
+    }
   }
   const centerOfMass = { x: weightedX / massKg, y: weightedY / massKg };
   return {
     massKg,
     bodyMassKg,
     centerOfMass,
-    engineForceN: secured.some((item) => item.kind === 'engine') ? 2200 : 0,
+    engineForceN: secured.some((item) => item.kind === 'engine') ? BASE_ENGINE_FORCE_N : 0,
     wheelOffsets: wheelOffsets.map((position) => ({
       x: position.x - centerOfMass.x,
       y: position.y - centerOfMass.y,
@@ -425,8 +462,8 @@ export function gridToLegacyBuild(grid: readonly GridPlacement[]): SerializedBui
   if (wheels[1]) build.frontWheel = 'wheel';
   if (byKind('engine')[0]) build.engine = 'engine';
   const seats = byKind('seat');
-  if (seats[0]) build.driverSeat = 'seat';
-  if (seats[1]) build.passengerSeat = 'seat';
+  if (seats.some((seat) => seat.id === DRIVER_SEAT_ID)) build.driverSeat = 'seat';
+  if (seats.some((seat) => seat.id !== DRIVER_SEAT_ID)) build.passengerSeat = 'seat';
   if (byKind('roofRack')[0]) build.roof = 'roofRack';
   if (byKind('rearCarrier')[0]) build.rearCarrier = 'rearCarrier';
   if (byKind('suspension')[0]) build.suspension = 'suspension';

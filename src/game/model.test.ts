@@ -6,6 +6,7 @@ import {
   clearOptionalParts,
   createDemoGameModel,
   createInitialGameModel,
+  DRIVER_SEAT_ID,
   gridBuildStats,
   gridForModel,
   moveGridPart,
@@ -13,10 +14,10 @@ import {
   passengerCapacity,
   placePart,
   removePart,
+  removeGridPart,
   returnPurchase,
   sellPart,
   validateBuild,
-  validateGridBuild,
 } from './model';
 
 describe('taller y economía', () => {
@@ -53,12 +54,16 @@ describe('taller y economía', () => {
     expect(() => placePart(initial, 'seat', 'passengerSeat')).toThrow('No hay piezas libres');
   });
 
-  it('sólo exige el asiento del conductor y protege el kit básico', () => {
+  it('mantiene fijo el asiento del conductor, aunque permite moverlo', () => {
     const initial = createInitialGameModel();
     const removedWheel = removePart(initial, 'frontWheel');
     expect(validateBuild(removedWheel.workshopBuild)).toBeNull();
-    const removedSeat = removePart(initial, 'driverSeat');
-    expect(validateGridBuild(gridForModel(removedSeat))).toBe('Falta el asiento del conductor.');
+    expect(() => removePart(initial, 'driverSeat')).toThrow('solo se puede mover');
+    expect(() => removeGridPart(initial, DRIVER_SEAT_ID)).toThrow('solo se puede mover');
+    const moved = moveGridPart(initial, DRIVER_SEAT_ID, 4, 1);
+    expect(gridForModel(moved).find((item) => item.id === DRIVER_SEAT_ID)).toMatchObject({
+      column: 4, row: 1,
+    });
     expect(() => sellPart(initial, 'wheel')).toThrow('kit básico');
   });
 
@@ -92,14 +97,23 @@ describe('taller y economía', () => {
     expect(sold.wallet).toBe(initial.wallet - 15 + 11);
   });
 
+  it('vende una compra reciente con depreciación y cancela su estado pendiente', () => {
+    const initial = createInitialGameModel();
+    const purchased = buyPart(initial, 'seat');
+    const sold = sellPart(purchased, 'seat');
+    expect(sold.wallet).toBe(initial.wallet - 15 + 11);
+    expect(sold.ownedParts.seat).toBe(1);
+    expect(sold.pendingPurchases.seat).toBe(0);
+  });
+
   it('calcula masa y centro de gravedad de una construcción conocida', () => {
     const initialStats = buildStats(createInitialGameModel().workshopBuild);
-    expect(initialStats.massKg).toBe(698);
-    expect(initialStats.bodyMassKg).toBe(698);
-    expect(initialStats.engineForceN).toBe(2200);
+    expect(initialStats.massKg).toBe(768);
+    expect(initialStats.bodyMassKg).toBe(768);
+    expect(initialStats.engineForceN).toBe(3000);
     const demoStats = buildStats(createDemoGameModel().workshopBuild);
-    expect(demoStats.massKg).toBe(796);
-    expect(demoStats.bodyMassKg).toBe(734);
+    expect(demoStats.massKg).toBe(866);
+    expect(demoStats.bodyMassKg).toBe(804);
     expect(demoStats.centerOfMass.y).toBeGreaterThan(initialStats.centerOfMass.y);
   });
 

@@ -45,6 +45,15 @@ window.addEventListener('keydown', (event) => {
     } else if (event.key === ' ') {
       event.preventDefault();
       controller.dispatch({ type: 'SET_BRAKE', value: true });
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (event.repeat) return;
+      const readyToCollect = snapshot.ride?.requests.find((progress) =>
+        progress.status === 'waiting' &&
+        Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS);
+      if (readyToCollect) {
+        controller.dispatch({ type: 'COLLECT_REQUEST', requestId: readyToCollect.request.id });
+      }
     } else if (event.key === 'e' || event.key === 'E') {
       event.preventDefault();
       const readyToDeliver = snapshot.ride?.requests.some((progress) =>

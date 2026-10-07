@@ -24,7 +24,7 @@ export const PART_CATALOG: readonly PartDefinition[] = [
   { kind: 'wheel', name: 'Rueda estándar', price: 20, massKg: 18, level: 1,
     function: 'Contacto y tracción', effect: 'Permite avanzar', space: 'Inferior' },
   { kind: 'engine', name: 'Motor urbano', price: 45, massKg: 130, level: 1,
-    function: 'Entrega fuerza motriz', effect: 'Máximo 2200 N', space: 'Interior' },
+    function: 'Entrega fuerza motriz', effect: 'Máximo 3000 N', space: 'Interior' },
   { kind: 'seat', name: 'Asiento', price: 15, massKg: 12, level: 1,
     function: 'Transporta una persona', effect: 'Capacidad +1', space: 'Interior' },
   { kind: 'roofRack', name: 'Parrilla de techo', price: 30, massKg: 28, level: 1,

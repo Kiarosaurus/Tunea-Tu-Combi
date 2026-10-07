@@ -7,13 +7,15 @@ import { TRANSIT_ROUTE } from '../data/transitRoute';
 import {
   BUILD_GRID_COLUMNS,
   BUILD_GRID_ROWS,
+  DRIVER_SEAT_ID,
   PART_FOOTPRINTS,
   gridForModel,
   gridVehicleCapacity,
+  passengerSeatPlacements,
   securedGridPlacements,
   type GridPlacement,
 } from '../game/model';
-import { PICKUP_MAX_SPEED_MPS, STOP_RADIUS_METERS } from '../game/rideSession';
+import { PICKUP_MAX_SPEED_MPS, REQUEST_NOTICE_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
 import { LEVEL_ONE_POLICE_CAR_X } from '../game/roadLimits';
 import type { WorldSnapshot } from '../physics/world';
@@ -91,6 +93,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.routeCode = snapshot.state === 'PLAYING' ? TRANSIT_ROUTE.code : '';
       canvas.dataset.passengerCapacity = String(snapshot.passengerCapacity);
       canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
+      canvas.dataset.engineExploded = String(snapshot.engineExploded);
       const hasWaitingPassenger = snapshot.ride?.requests.some((progress) =>
         progress.status === 'waiting' && progress.request.kind === 'passenger') ?? false;
       canvas.dataset.missingRequirement = snapshot.state === 'PLAYING' && hasWaitingPassenger &&
@@ -294,7 +297,7 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     const groundY = terrainHeightAt(world.terrain, progress.request.originX);
     const point = worldToScreen({ x: progress.request.originX, y: groundY }, world, width, height);
     if (point.x < -60 || point.x > width + 60) continue;
-    const nearby = Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS;
+    const nearby = Math.abs(snapshot.vehicleX - progress.request.originX) <= REQUEST_NOTICE_RADIUS_METERS;
     context.save();
     context.globalAlpha = nearby ? 1 : 0.58;
     context.translate(point.x, point.y);
@@ -669,6 +672,8 @@ function drawCombi(
   drawInstalledParts(context, placements, securedIds, x, y, bodyWidth, bodyHeight,
     rideElapsed, world.body.angleRadians, snapshot.speedMps, snapshot.reducedMotion);
   drawOnboardRequests(context, snapshot, x, y, bodyWidth, bodyHeight);
+  if (snapshot.engineExploded) drawEngineExplosion(context, x, y, bodyWidth, bodyHeight,
+    snapshot.reducedMotion);
 
   context.fillStyle = '#182027';
   for (const wheel of world.body.wheels) {
@@ -700,21 +705,23 @@ function drawCombi(
 function drawOnboardRequests(context: CanvasRenderingContext2D, snapshot: AppSnapshot,
   bodyX: number, bodyY: number, bodyWidth: number, bodyHeight: number): void {
   const onboard = snapshot.ride?.requests.filter((progress) => progress.status === 'onboard') ?? [];
-  if (onboard.length === 0) return;
+  const grid = gridForModel(snapshot.game);
+  const driverSeat = grid.find((placement) => placement.id === DRIVER_SEAT_ID);
+  const passengerSeats = passengerSeatPlacements(grid);
   const clothing: Readonly<Record<string, string>> = {
     azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
   };
   context.save();
+  if (driverSeat) {
+    const position = occupantPosition(driverSeat, bodyX, bodyY, bodyWidth, bodyHeight);
+    drawSeatedPerson(context, position.x, position.y, bodyWidth, bodyHeight, '#f2c14e');
+  }
   for (const [index, progress] of onboard.entries()) {
-    const personX = bodyX + bodyWidth * (0.3 + index * 0.15);
-    const personY = bodyY + bodyHeight * 0.36;
-    context.fillStyle = '#d9a47f';
-    context.beginPath();
-    context.arc(personX, personY, Math.max(3, bodyHeight * 0.07), 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = clothing[progress.request.attendantVariant] ?? '#62b7ff';
-    context.fillRect(personX - bodyWidth * 0.025, personY + bodyHeight * 0.06,
-      bodyWidth * 0.05, bodyHeight * 0.15);
+    const seat = passengerSeats[index];
+    if (!seat) continue;
+    const position = occupantPosition(seat, bodyX, bodyY, bodyWidth, bodyHeight);
+    drawSeatedPerson(context, position.x, position.y, bodyWidth, bodyHeight,
+      clothing[progress.request.attendantVariant] ?? '#62b7ff');
     if (progress.request.kind === 'roofCargo') {
       const cargoX = bodyX + bodyWidth * 0.44;
       const cargoY = bodyY - bodyHeight * 0.18;
@@ -742,18 +749,62 @@ function drawOnboardRequests(context: CanvasRenderingContext2D, snapshot: AppSna
   context.restore();
 }
 
+function occupantPosition(placement: GridPlacement, bodyX: number, bodyY: number,
+  bodyWidth: number, bodyHeight: number): { readonly x: number; readonly y: number } {
+  const innerWidth = bodyWidth * 0.88;
+  const innerHeight = bodyHeight * 0.82;
+  return {
+    x: bodyX + bodyWidth * 0.055 +
+      ((placement.column + PART_FOOTPRINTS[placement.kind].columns / 2) / BUILD_GRID_COLUMNS) * innerWidth,
+    y: bodyY + bodyHeight * 0.06 +
+      ((placement.row + PART_FOOTPRINTS[placement.kind].rows * 0.32) / BUILD_GRID_ROWS) * innerHeight,
+  };
+}
+
+function drawSeatedPerson(context: CanvasRenderingContext2D, x: number, y: number,
+  bodyWidth: number, bodyHeight: number, shirtColor: string): void {
+  context.fillStyle = '#d9a47f';
+  context.beginPath();
+  context.arc(x, y, Math.max(3, bodyHeight * 0.07), 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = shirtColor;
+  context.fillRect(x - bodyWidth * 0.025, y + bodyHeight * 0.06,
+    bodyWidth * 0.05, bodyHeight * 0.15);
+}
+
 function drawEngineSmoke(context: CanvasRenderingContext2D, x: number, y: number,
   healthPercent: number, reducedMotion: boolean): void {
   const severity = 1 - healthPercent / 100;
-  const phase = reducedMotion ? 0 : performance.now() / 520;
+  const phase = reducedMotion ? 0 : performance.now() / Math.max(180, 620 - severity * 360);
+  const particleCount = 3 + Math.ceil(severity * 11);
   context.save();
-  for (let index = 0; index < 6; index += 1) {
-    const rise = index * (10 + severity * 8);
-    const drift = Math.sin(phase + index * 1.4) * (5 + index * 2);
-    const radius = 5 + index * 2 + severity * 5;
-    context.fillStyle = `rgba(36, 44, 47, ${Math.max(0.05, 0.34 - index * 0.045)})`;
+  for (let index = 0; index < particleCount; index += 1) {
+    const rise = index * (7 + severity * 8);
+    const drift = Math.sin(phase + index * 1.4) * (4 + index * (1 + severity));
+    const radius = 3 + index * 1.3 + severity * 8;
+    const alpha = Math.max(0.06, 0.18 + severity * 0.42 - index * 0.025);
+    context.fillStyle = `rgba(${Math.round(70 - severity * 45)}, ${Math.round(76 - severity * 48)}, ${Math.round(78 - severity * 48)}, ${alpha})`;
     context.beginPath();
     context.arc(x + drift, y - rise, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawEngineExplosion(context: CanvasRenderingContext2D, bodyX: number, bodyY: number,
+  bodyWidth: number, bodyHeight: number, reducedMotion: boolean): void {
+  const phase = reducedMotion ? 0.7 : 0.75 + Math.sin(performance.now() / 45) * 0.12;
+  const centerX = bodyX + bodyWidth * 0.72;
+  const centerY = bodyY + bodyHeight * 0.5;
+  context.save();
+  for (const [radius, color] of [
+    [bodyHeight * 0.72 * phase, 'rgba(255, 92, 64, 0.62)'],
+    [bodyHeight * 0.48 * phase, 'rgba(242, 193, 78, 0.86)'],
+    [bodyHeight * 0.22 * phase, 'rgba(255, 245, 217, 0.96)'],
+  ] as const) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
     context.fill();
   }
   context.restore();

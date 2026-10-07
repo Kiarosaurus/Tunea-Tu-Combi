@@ -4,19 +4,30 @@ import { expect, test, type Page } from '@playwright/test';
 
 const artifactUrl = pathToFileURL(resolve(import.meta.dirname, '../../dist/index.html')).href;
 
-async function clickCurrentPickup(page: Page): Promise<void> {
-  const canvas = page.locator('canvas');
-  await expect.poll(async () => canvas.evaluate((element) => {
-    const x = Number((element as HTMLElement).dataset.pickupX);
-    const y = Number((element as HTMLElement).dataset.pickupY);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    const bounds = element.getBoundingClientRect();
-    element.dispatchEvent(new PointerEvent('pointerup', {
-      bubbles: true, pointerType: 'mouse', button: 0,
-      clientX: bounds.left + x, clientY: bounds.top + y,
-    }));
-    return true;
-  }), { timeout: 5_000 }).toBe(true);
+async function engageControlledBrake(page: Page, targetPercent: 50 | 100): Promise<void> {
+  const indicator = page.locator('[data-ui="brake-effectiveness"]');
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.keyboard.down(' ');
+    if (await indicator.innerText() === `FRENO ${targetPercent} %`) return;
+    await page.keyboard.up(' ');
+  }
+  throw new Error(`El freno no recorrió el nivel de ${targetPercent} %.`);
+}
+
+async function pickupStoppedRequest(page: Page, requestId: string): Promise<void> {
+  const capacity = page.locator('[data-ui="capacity"]');
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await page.keyboard.press('ArrowDown');
+    if (await capacity.innerText() === '1 / 1') return;
+    await page.keyboard.down('d');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('d');
+    await engageControlledBrake(page, 100);
+    await expect.poll(async () => Math.abs(Number.parseFloat(
+      await page.locator('[data-ui="speed"]').innerText())), { timeout: 4_000 }).toBeLessThanOrEqual(0.05);
+    await page.keyboard.up(' ');
+  }
+  await expect(capacity, `No se recogió ${requestId}.`).toHaveText('1 / 1');
 }
 
 async function clickRequestOnRoute(page: Page, requestId: string): Promise<void> {
@@ -24,11 +35,11 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await expect(canvas).toHaveAttribute('data-pickup-request', requestId, { timeout: 15_000 });
   await page.keyboard.up('d');
   await page.keyboard.up('ArrowRight');
-  await page.keyboard.down(' ');
+  await engageControlledBrake(page, 100);
   await expect.poll(async () => Math.abs(Number.parseFloat(
-    await page.locator('[data-ui="speed"]').innerText())), { timeout: 5_000 }).toBeLessThanOrEqual(0.05);
+    await page.locator('[data-ui="speed"]').innerText())), { timeout: 8_000 }).toBeLessThanOrEqual(0.05);
   await page.keyboard.up(' ');
-  await clickCurrentPickup(page);
+  await pickupStoppedRequest(page, requestId);
   await page.keyboard.down('d');
 }
 
@@ -38,11 +49,13 @@ async function collectNextRequest(page: Page): Promise<void> {
   const requestId = await canvas.getAttribute('data-pickup-request');
   await page.keyboard.up('d');
   await page.keyboard.up('ArrowRight');
-  await page.keyboard.down(' ');
+  const approachSpeed = Math.abs(Number.parseFloat(
+    await page.locator('[data-ui="speed"]').innerText()));
+  await engageControlledBrake(page, approachSpeed >= 4.5 ? 100 : 50);
   await expect.poll(async () => Math.abs(Number.parseFloat(
-    await page.locator('[data-ui="speed"]').innerText())), { timeout: 5_000 }).toBeLessThanOrEqual(0.05);
+    await page.locator('[data-ui="speed"]').innerText())), { timeout: 8_000 }).toBeLessThanOrEqual(0.05);
   await page.keyboard.up(' ');
-  await clickCurrentPickup(page);
+  await pickupStoppedRequest(page, requestId ?? 'solicitud');
   await expect.poll(async () => canvas.getAttribute('data-pickup-request'))
     .not.toBe(requestId);
   await page.keyboard.down('d');
@@ -63,7 +76,6 @@ async function assembleVehicle(page: Page, suspension = false, cargoSupports = t
   await placeWorkshopPart(page, 'Rueda estándar', 2, 6);
   await placeWorkshopPart(page, 'Rueda estándar', 8, 6);
   await placeWorkshopPart(page, 'Motor urbano', 7, 4);
-  await placeWorkshopPart(page, 'Asiento', 4, 4);
   await placeWorkshopPart(page, 'Asiento', 5, 4);
   if (cargoSupports) {
     await placeWorkshopPart(page, 'Parrilla de techo', 3, 3);
@@ -108,22 +120,27 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.getByRole('heading', { name: 'Arma tu combi' })).toBeVisible();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
-  await expect(page.locator('.grid-piece')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeDisabled();
+  await expect(page.locator('.grid-piece')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /Mover asiento del conductor/ })).toBeVisible();
   await assembleVehicle(page);
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
 
-  const driverSeat = page.getByRole('button', { name: /Retirar Asiento de columna 4, fila 4/ });
+  const driverSeat = page.getByRole('button', { name: /Mover asiento del conductor de columna 4, fila 4/ });
   await driverSeat.scrollIntoViewIfNeeded();
   const scrollBeforeChange = await page.evaluate(() => window.scrollY);
   await driverSeat.click();
-  await page.getByRole('button', { name: /Retirar Asiento/ }).click();
   await expect.poll(() => page.evaluate(() => window.scrollY))
     .toBeGreaterThanOrEqual(Math.max(0, scrollBeforeChange - 10));
-  await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeDisabled();
-  await expect(page.getByText('Falta el asiento del conductor.')).toBeVisible();
-  await page.getByRole('button', { name: 'Celda columna 5, fila 4' }).click();
+  await expect(page.getByText(/asiento del conductor es fijo/i)).toBeVisible();
+  await expect(driverSeat.locator('.grid-driver-person')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
+
+  const passengerSeat = page.getByRole('button', { name: /Retirar Asiento de columna 5, fila 4/ });
+  await passengerSeat.click();
+  const sellSeat = page.getByRole('button', { name: 'Vender Asiento libre por S/ 11' });
+  await expect(sellSeat).toBeVisible();
+  await sellSeat.click();
+  await expect(sellSeat).toHaveCount(0);
 
   const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
   const targetCell = page.getByRole('button', { name: 'Celda columna 1, fila 1' });
@@ -145,7 +162,6 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
   await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await expect(page.locator('canvas')).toHaveAttribute('data-missing-requirement', 'seat');
   await expect.poll(async () => Number(await page.locator('canvas').getAttribute('data-engine-health')),
     { timeout: 5_000 }).toBeLessThanOrEqual(75);
 
@@ -165,6 +181,7 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   await expect(page.getByRole('meter', { name: 'Esfuerzo del motor' })).toBeVisible();
+  await expect(page.locator('[data-ui="brake-effectiveness"]')).toHaveText('FRENO 0 %');
   const accelerate = page.getByRole('button', { name: 'Acelerar' });
   await accelerate.dispatchEvent('pointerdown', { pointerType: 'touch', button: 0 });
   await expect.poll(async () => Number.parseFloat(await page.locator('[data-ui="position"]').innerText()))
@@ -227,8 +244,8 @@ test('carga un perfil de demostración y conserva preferencias accesibles', asyn
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
   await page.getByRole('button', { name: /Hora punta/ }).click();
-  await expect(page.getByText('Peso').locator('..')).toContainText('520 kg');
-  await expect(page.locator('.grid-piece')).toHaveCount(0);
+  await expect(page.getByText('Peso').locator('..')).toContainText('602 kg');
+  await expect(page.locator('.grid-piece')).toHaveCount(1);
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(0);
 });
 

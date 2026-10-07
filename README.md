@@ -101,10 +101,12 @@ BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 ```
 
 La interfaz recorre todos esos estados durante la campaña completa. Cada nivel
-abre una cuadrícula vacía, entrega el kit gratuito en la paleta y asigna un
-presupuesto fijo de construcción.
+abre una cuadrícula con el asiento fijo del conductor, entrega el resto del kit
+gratuito en la paleta y asigna un presupuesto fijo de construcción. El asiento
+del conductor se puede mover, pero no retirar ni vender. Las piezas adicionales
+libres se venden por el 70 % de su precio.
 Para transportar un pasajero hace falta un segundo asiento. Las compras se hacen
-desde la misma paleta de piezas y pueden devolverse antes del recorrido.
+desde la misma paleta de piezas y las unidades libres pueden venderse antes del recorrido.
 
 En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
@@ -114,9 +116,10 @@ La cuadrícula está integrada en la silueta lateral de la combi: motor, asiento
 parrilla, portacarga y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
 
-En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa y
-`Espacio` frena. Recoger exige detenerse casi por completo. Los
-pasajeros aparecen junto a la pista y también se recogen haciendo clic
+En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
+`Espacio` frena y cada nueva pulsación recorre 25 %, 50 %, 75 % y 100 % de
+efectividad. La flecha abajo recoge la solicitud cercana. Recoger exige detenerse
+casi por completo. Los pasajeros aparecen junto a la pista y también se recogen haciendo clic
 directamente sobre ellos; al llegar a su parada bajan automáticamente y liberan
 el asiento. `E` se conserva como alternativa de teclado y para las cargas.
 `Esc` pausa, `R` reinicia con confirmación y `F1`
@@ -127,8 +130,9 @@ un solo lado aumenta con fuerza la resistencia al avance y reduce la tracción.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
 incluyen pasajeros y una carga para parrilla o scooter posterior. Toda carga
 aparece junto a su responsable, requiere además un asiento libre y se recoge
-directamente en la pista. Persona y objeto permanecen visibles al viajar. Su masa e
-inercia se agregan mientras están a bordo; una carga se pierde si rompe su
+directamente en la pista. Persona y objeto permanecen visibles al viajar. Cada
+persona ocupa la posición de su asiento; su masa e inercia se agregan mientras
+está a bordo y pueden inclinar o volcar la combi. Una carga se pierde si rompe su
 unión. Las tarifas están entre S/ 1 y S/ 5 según la distancia y las cuotas se
 ajustan a esos importes. El dinero entregado determina hasta tres estrellas,
 pero no se acumula como saldo. Solo tres estrellas desbloquean la siguiente ruta.
@@ -141,8 +145,9 @@ instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
 Los golpes de carrocería contra la pista reducen el motor en 25 % y el arrastre
 continuo lo deteriora gradualmente, incluso si la combi casi no avanza mientras
 se fuerza el acelerador. Una barra vertical acumula esfuerzo: al permanecer llena,
-la salud baja cinco puntos por segundo; al soltar, se enfría. El humo comunica el
-daño sin abrir otro panel. La cámara mantiene la combi centrada en ambos ejes.
+la salud baja dos puntos por segundo; al soltar, se enfría. El humo aumenta de
+densidad al caer la salud; al llegar a 0 %, el motor explota y termina en game
+over. La cámara mantiene la combi centrada en ambos ejes.
 En el borde posterior del primer recorrido, un patrullero bloquea la salida y
 termina el intento por arresto antes de que la combi pueda caer fuera del mundo.
 Las piezas sin conexión caen al piso interior, se amontonan como desorden y no

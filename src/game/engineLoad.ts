@@ -1,6 +1,6 @@
 export const ENGINE_LOAD_GAIN_PER_SECOND = 0.2;
 export const ENGINE_LOAD_COOLING_PER_SECOND = 1.2;
-export const ENGINE_OVERLOAD_DAMAGE_PER_SECOND = 0.05;
+export const ENGINE_OVERLOAD_DAMAGE_PER_SECOND = 0.02;
 
 export interface EngineLoadResult {
   readonly load: number;
