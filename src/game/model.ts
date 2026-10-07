@@ -155,19 +155,18 @@ export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
     suspension: { id: 'suspension-1', kind: 'suspension', column: 4, row: 5 },
   };
   const ownedParts = { ...base.ownedParts };
-  const workshopGrid = [...gridForModel(base)];
+  const workshopGrid: GridPlacement[] = [];
   for (const kind of defaultExtras) {
     const placement = canonicalExtras[kind];
     if (!placement || workshopGrid.some((item) => item.kind === kind && item.id === placement.id)) continue;
     ownedParts[kind] += 1;
-    workshopGrid.push(placement);
   }
   return {
     ...base,
     wallet: buildBudget,
     ownedParts,
     workshopGrid,
-    workshopBuild: gridToLegacyBuild(workshopGrid),
+    workshopBuild: {},
     unlockedLevel: model.unlockedLevel,
     completedLevels: model.completedLevels,
   };

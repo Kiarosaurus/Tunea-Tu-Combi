@@ -28,6 +28,8 @@ import {
 import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } from '../game/rideSession';
 import { generateRequests } from '../game/requests';
 import { calculateEngineDamage } from '../game/engineDamage';
+import { updateEngineLoad } from '../game/engineLoad';
+import { LEVEL_ONE_ARREST_X } from '../game/roadLimits';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
 import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
@@ -78,6 +80,7 @@ export interface AppSnapshot {
   readonly won: boolean | null;
   readonly stars: number | null;
   readonly engineHealthPercent: number;
+  readonly engineLoadPercent: number;
   readonly saveRecovered: boolean;
 }
 
@@ -97,6 +100,7 @@ export class AppController {
   #won: boolean | null = null;
   #stars: number | null = null;
   #engineHealth = 1;
+  #engineLoad = 0;
   #chassisContactActive = false;
   #uiElapsed = 0;
 
@@ -136,6 +140,7 @@ export class AppController {
       won: this.#won,
       stars: this.#stars,
       engineHealthPercent: Math.round(this.#engineHealth * 100),
+      engineLoadPercent: Math.round(this.#engineLoad * 100),
       saveRecovered: this.#repository.recovered,
     };
   }
@@ -159,12 +164,16 @@ export class AppController {
       const build = gridBuildStats(gridForModel(this.#model));
       const wheelCount = build.wheelOffsets?.length ?? 0;
       const wheelPenalty = wheelLayoutPenalty(build.wheelOffsets ?? []);
+      const engineLoad = updateEngineLoad(this.#engineLoad,
+        build.engineForceN > 0 && this.#throttle !== 0, durationSeconds);
+      this.#engineLoad = engineLoad.load;
+      this.#engineHealth = Math.max(0, this.#engineHealth - engineLoad.damage);
       const driveForce = driveForceN(this.#world.snapshot(), {
         throttle: this.#throttle,
         braking: this.#braking,
       }, {
         maxEngineForceN: wheelCount > 0 ? build.engineForceN * this.#engineHealth : 0,
-        maxSpeedMps: 5.5,
+        maxSpeedMps: LEVELS.find((level) => level.id === this.#selectedLevelId)?.maxSpeedMps ?? 5.5,
         brakingForceN: wheelCount > 0 ? 3000 : 800,
         rollingResistanceNPerMps: wheelCount > 0
           ? 125 * wheelPenalty.rollingResistanceMultiplier
@@ -180,6 +189,10 @@ export class AppController {
           if (this.#ride.lose(requestId)) this.#message = 'Una carga se desprendió por el impacto.';
         }
         const world = this.#world.snapshot();
+        if (this.#selectedLevelId === 'primer-recorrido' && world.body.position.x <= LEVEL_ONE_ARREST_X) {
+          this.#arrestRide();
+          return;
+        }
         const chassisContacts = world.contacts.filter((contact) => contact.wheelIndex < 0);
         const damage = calculateEngineDamage({
           health: this.#engineHealth,
@@ -188,6 +201,7 @@ export class AppController {
           contactStarted: chassisContacts.length > 0 && !this.#chassisContactActive,
           maximumNormalImpulseNs: Math.max(0, ...chassisContacts.map((contact) => contact.normalImpulseNs)),
           speedMps: world.body.velocity.x,
+          driveDemand: this.#throttle !== 0,
         });
         this.#engineHealth = damage.health;
         this.#chassisContactActive = chassisContacts.length > 0;
@@ -270,9 +284,11 @@ export class AppController {
         return;
       case 'SET_THROTTLE':
         this.#throttle = action.value;
+        if (action.value !== 0) this.#braking = false;
         return;
       case 'SET_BRAKE':
         this.#braking = action.value;
+        if (action.value) this.#throttle = 0;
         return;
       case 'COLLECT_REQUEST':
         this.#collect(action.requestId);
@@ -384,6 +400,7 @@ export class AppController {
     this.#won = null;
     this.#stars = null;
     this.#engineHealth = 1;
+    this.#engineLoad = 0;
     this.#chassisContactActive = false;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
     this.#message = stats.loosePieces
@@ -408,7 +425,13 @@ export class AppController {
   #collect(requestId: string): void {
     if (this.#machine.state !== 'PLAYING' || !this.#ride) throw new Error('No hay recorrido activo.');
     const request = this.#ride.snapshot.requests.find((item) => item.request.id === requestId)?.request;
-    this.#ride.collect(requestId, this.#world.snapshot().body.position.x,
+    const jointId = request ? payloadJoint(request.kind) : undefined;
+    if (jointId && !this.#world.snapshot().joints.some((joint) =>
+      joint.id === jointId && !joint.broken)) {
+      throw new Error('El soporte de esta carga está roto. Reinicia o vuelve al taller.');
+    }
+    const world = this.#world.snapshot();
+    this.#ride.collect(requestId, world.body.position.x, world.body.velocity.x,
       this.#model.workshopGrid
         ? gridVehicleCapacity(gridForModel(this.#model))
         : vehicleCapacity(this.#model.workshopBuild));
@@ -417,7 +440,7 @@ export class AppController {
         ? gridBuildStats(gridForModel(this.#model)).centerOfMass
         : buildStats(this.#model.workshopBuild).centerOfMass;
       this.#world.attachPayload(request.id, request.massKg,
-        payloadOffset(request.kind, centerOfMass), payloadJoint(request.kind));
+        payloadOffset(request.kind, centerOfMass), jointId);
     }
     this.#message = request?.kind === 'passenger'
       ? 'Pasajero a bordo. Llévalo a su destino.'
@@ -447,6 +470,15 @@ export class AppController {
       : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`;
     this.#throttle = 0;
     this.#save();
+    this.#machine.transition('RESULTS');
+  }
+
+  #arrestRide(): void {
+    this.#won = false;
+    this.#stars = 0;
+    this.#throttle = 0;
+    this.#braking = false;
+    this.#message = 'La policía detuvo la combi por salir de la ruta.';
     this.#machine.transition('RESULTS');
   }
 
@@ -498,6 +530,7 @@ export class AppController {
     this.#throttle = 0;
     this.#braking = false;
     this.#engineHealth = 1;
+    this.#engineLoad = 0;
     this.#chassisContactActive = false;
     this.#message = '';
     this.#machine.transition('MENU');

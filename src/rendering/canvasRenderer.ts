@@ -13,8 +13,9 @@ import {
   securedGridPlacements,
   type GridPlacement,
 } from '../game/model';
-import { STOP_RADIUS_METERS } from '../game/rideSession';
+import { PICKUP_MAX_SPEED_MPS, STOP_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
+import { LEVEL_ONE_POLICE_CAR_X } from '../game/roadLimits';
 import type { WorldSnapshot } from '../physics/world';
 
 export interface CanvasRenderer extends Disposable {
@@ -118,12 +119,50 @@ function draw(
   drawCity(context, width, height, snapshot.selectedLevelId, snapshot.vehicleX);
   drawRouteBoard(context, width, snapshot);
   drawTerrain(context, width, height, world);
-  drawStreetDetails(context, width, height, snapshot.vehicleX);
-  if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot);
+  drawStreetDetails(context, width, height, snapshot.vehicleX, world);
+  drawPoliceBarrier(context, width, height, snapshot, world);
+  if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot, world);
   drawCombi(context, width, height, snapshot, world);
   const requestHitAreas = drawWaitingRequests(context, width, height, snapshot, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
   return requestHitAreas;
+}
+
+function drawPoliceBarrier(context: CanvasRenderingContext2D, width: number, height: number,
+  snapshot: AppSnapshot, world: WorldSnapshot): void {
+  if (snapshot.selectedLevelId !== 'primer-recorrido' ||
+    (snapshot.state !== 'PLAYING' && snapshot.state !== 'PAUSED')) return;
+  const groundY = terrainHeightAt(world.terrain, LEVEL_ONE_POLICE_CAR_X);
+  const point = worldToScreen({ x: LEVEL_ONE_POLICE_CAR_X, y: groundY }, world, width, height);
+  const scale = worldScale(width, height);
+  context.save();
+  context.translate(point.x, point.y);
+  context.fillStyle = '#edf4f6';
+  context.strokeStyle = '#15252d';
+  context.lineWidth = 3;
+  roundedRect(context, -scale * 0.95, -scale * 0.58, scale * 1.9, scale * 0.52, 8);
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#1d63a8';
+  context.fillRect(-scale * 0.92, -scale * 0.37, scale * 1.84, scale * 0.17);
+  context.fillStyle = '#b9d8eb';
+  roundedRect(context, -scale * 0.45, -scale * 0.78, scale * 0.9, scale * 0.27, 7);
+  context.fill();
+  context.fillStyle = '#ff5c5c';
+  context.fillRect(-scale * 0.18, -scale * 0.85, scale * 0.17, scale * 0.08);
+  context.fillStyle = '#62b7ff';
+  context.fillRect(scale * 0.01, -scale * 0.85, scale * 0.17, scale * 0.08);
+  context.fillStyle = '#15252d';
+  for (const wheelX of [-0.58, 0.58]) {
+    context.beginPath();
+    context.arc(wheelX * scale, -scale * 0.04, scale * 0.18, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.fillStyle = '#ffffff';
+  context.font = `900 ${Math.max(8, scale * 0.16)}px system-ui`;
+  context.textAlign = 'center';
+  context.fillText('POLICIA', 0, -scale * 0.24);
+  context.restore();
 }
 
 function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
@@ -269,7 +308,7 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     const occupiedSupport = onboardRequests.filter((item) =>
       item.request.kind === progress.request.kind).length;
     const missingRequirement = requestRequirement(progress.request.kind, capacity,
-      onboardRequests.length, occupiedSupport);
+      onboardRequests.length, occupiedSupport, nearby, snapshot.speedMps);
     if (missingRequirement) {
       context.fillStyle = '#fff5d9';
       context.strokeStyle = '#182027';
@@ -301,7 +340,7 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
 
 function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
   capacity: ReturnType<typeof gridVehicleCapacity>, occupiedSeats: number,
-  occupiedSupport: number): string | null {
+  occupiedSupport: number, nearby: boolean, speedMps: number): string | null {
   if (kind === 'roofCargo' && (capacity.roofCargo === 0 || occupiedSupport >= capacity.roofCargo)) {
     return capacity.roofCargo === 0 ? 'FALTA PARRILLA' : 'SOPORTE OCUPADO';
   }
@@ -311,6 +350,7 @@ function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
   if (capacity.passenger <= occupiedSeats) {
     return capacity.passenger === 0 ? 'FALTA ASIENTO' : 'SIN ESPACIO';
   }
+  if (nearby && Math.abs(speedMps) > PICKUP_MAX_SPEED_MPS) return 'FRENA';
   return null;
 }
 
@@ -472,14 +512,15 @@ function drawCity(context: CanvasRenderingContext2D, width: number, height: numb
 }
 
 function drawStreetDetails(context: CanvasRenderingContext2D, width: number, height: number,
-  vehicleX: number): void {
-  const roadTop = height * 0.69;
+  vehicleX: number, world: WorldSnapshot): void {
+  const groundY = terrainHeightAt(world.terrain, world.body.position.x);
+  const roadTop = worldToScreen({ x: world.body.position.x, y: groundY }, world, width, height).y;
   const offset = positiveModulo(vehicleX * 34, 150);
   const poleOffset = positiveModulo(vehicleX * 17, 310);
   context.save();
   context.fillStyle = 'rgba(255,255,255,0.34)';
   for (let x = -offset - 120; x < width + 120; x += 150) {
-    context.fillRect(x, height * 0.84, 76, 5);
+    context.fillRect(x, roadTop + height * 0.15, 76, 5);
   }
   context.strokeStyle = '#15252d';
   context.lineWidth = 5;
@@ -520,12 +561,13 @@ function positiveModulo(value: number, divisor: number): number {
 }
 
 function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: number,
-  snapshot: AppSnapshot): void {
+  snapshot: AppSnapshot, world: WorldSnapshot): void {
   const speed = Math.abs(snapshot.speedMps);
   if (speed < 0.6 || snapshot.state !== 'PLAYING') return;
   const scale = Math.min(1, speed / 5.5);
   const baseX = width * 0.5 - worldScale(width, height) * 1.7;
-  const baseY = height * 0.69 - 8;
+  const groundY = terrainHeightAt(world.terrain, world.body.position.x);
+  const baseY = worldToScreen({ x: world.body.position.x, y: groundY }, world, width, height).y - 8;
   context.save();
   context.fillStyle = `rgba(242, 193, 78, ${0.12 + scale * 0.16})`;
   for (let index = 0; index < 6; index += 1) {
@@ -544,9 +586,18 @@ function drawTerrain(
   height: number,
   world: WorldSnapshot,
 ): void {
-  const roadTop = height * 0.69;
   context.fillStyle = '#293039';
-  context.fillRect(0, roadTop, width, height - roadTop);
+  context.beginPath();
+  for (const [index, segment] of world.terrain.entries()) {
+    const start = worldToScreen(segment.start, world, width, height);
+    const end = worldToScreen(segment.end, world, width, height);
+    if (index === 0) context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+  }
+  context.lineTo(width + 200, height + 100);
+  context.lineTo(-200, height + 100);
+  context.closePath();
+  context.fill();
   context.lineWidth = 5;
   context.strokeStyle = '#e9b94f';
   context.beginPath();
@@ -731,10 +782,14 @@ function drawInstalledParts(
   for (const placement of placements) {
     if (placement.kind === 'wheel') continue;
     const footprint = PART_FOOTPRINTS[placement.kind];
-    let x = insetX + (placement.column / BUILD_GRID_COLUMNS) * innerWidth;
-    let y = insetY + (placement.row / BUILD_GRID_ROWS) * innerHeight;
-    const width = Math.max(10, (footprint.columns / BUILD_GRID_COLUMNS) * innerWidth);
-    const height = Math.max(10, (footprint.rows / BUILD_GRID_ROWS) * innerHeight);
+    const baseWidth = (footprint.columns / BUILD_GRID_COLUMNS) * innerWidth;
+    const baseHeight = (footprint.rows / BUILD_GRID_ROWS) * innerHeight;
+    const width = Math.max(14, baseWidth * 1.45);
+    const height = Math.max(14, baseHeight * 1.45);
+    let x = insetX + (placement.column / BUILD_GRID_COLUMNS) * innerWidth - (width - baseWidth) / 2;
+    let y = insetY + (placement.row / BUILD_GRID_ROWS) * innerHeight - (height - baseHeight) / 2;
+    x = Math.max(insetX, Math.min(insetX + innerWidth - width, x));
+    y = Math.max(insetY, Math.min(insetY + innerHeight - height, y));
     const secured = securedIds.has(placement.id);
     context.save();
     if (!secured && rideElapsed > 0) {
@@ -971,7 +1026,7 @@ function worldToScreen(
   const pixelsPerMeter = worldScale(width, height);
   return {
     x: width * 0.5 + (point.x - world.body.position.x) * pixelsPerMeter,
-    y: height * 0.69 - point.y * pixelsPerMeter,
+    y: height * 0.58 - (point.y - world.body.position.y) * pixelsPerMeter,
   };
 }
 

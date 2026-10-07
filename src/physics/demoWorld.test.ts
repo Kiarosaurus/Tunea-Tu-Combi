@@ -23,7 +23,7 @@ describe('mundos de la campaña', () => {
     );
   });
 
-  it('la suspensión protege una carga del impacto inicial de pista dañada', () => {
+  it('inicia apoyado sin romper soportes con o sin suspensión', () => {
     const rigid = createRideWorld('pista-danada', { roofRack: true });
     const suspended = createRideWorld('pista-danada', {
       roofRack: true,
@@ -35,8 +35,8 @@ describe('mundos de la campaña', () => {
       rigid.step(FIXED_STEP_SECONDS);
       suspended.step(FIXED_STEP_SECONDS);
     }
-    expect(rigid.snapshot().joints[0]?.broken).toBe(true);
-    expect(rigid.snapshot().lostPayloadIds).toContain('carga-rigida');
+    expect(rigid.snapshot().joints[0]?.broken).toBe(false);
+    expect(rigid.snapshot().lostPayloadIds).toEqual([]);
     expect(suspended.snapshot().joints[0]?.broken).toBe(false);
     expect(suspended.snapshot().lostPayloadIds).toEqual([]);
   });

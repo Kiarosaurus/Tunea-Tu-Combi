@@ -55,8 +55,8 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
   ];
   if (levelId !== 'primer-recorrido') throw new Error(`No hay solicitudes para ${levelId}.`);
   return [
-    passengerRequest('primer-pasajero', 'Collique', 'Próceres', 5, 12, random),
-    passengerRequest('segundo-pasajero', 'Vista Alegre', 'Hospital Collique', 15, 22, random),
+    passengerRequest('primer-pasajero', 'Collique', 'Próceres', 8, 16, random),
+    passengerRequest('segundo-pasajero', 'Vista Alegre', 'Hospital Collique', 22, 30, random),
     cargoRequest(random),
   ];
 }
@@ -90,7 +90,7 @@ function passengerRequest(
 
 function cargoRequest(random: () => number): RideRequest {
   const kind: RequestKind = random() < 0.5 ? 'roofCargo' : 'scooter';
-  return cargoRequestForRoute('carga-terminal', 'Universitaria', 'Trapiche', 24, 29,
+  return cargoRequestForRoute('carga-terminal', 'Universitaria', 'Trapiche', 36, 41,
     kind, random);
 }
 

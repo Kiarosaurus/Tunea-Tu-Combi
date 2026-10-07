@@ -1,7 +1,7 @@
 export const IMPACT_DAMAGE_FRACTION = 0.25;
 export const DRAG_DAMAGE_PER_SECOND = 0.08;
 export const IMPACT_THRESHOLD_NS = 220;
-export const DRAG_SPEED_THRESHOLD_MPS = 0.55;
+export const DRAG_SPEED_THRESHOLD_MPS = 0.08;
 
 export interface EngineDamageInput {
   readonly health: number;
@@ -10,6 +10,7 @@ export interface EngineDamageInput {
   readonly contactStarted: boolean;
   readonly maximumNormalImpulseNs: number;
   readonly speedMps: number;
+  readonly driveDemand?: boolean;
 }
 
 export interface EngineDamageResult {
@@ -25,7 +26,8 @@ export function calculateEngineDamage(input: EngineDamageInput): EngineDamageRes
   }
   const impactApplied = input.chassisContact && input.contactStarted &&
     input.maximumNormalImpulseNs >= IMPACT_THRESHOLD_NS;
-  const dragging = input.chassisContact && Math.abs(input.speedMps) >= DRAG_SPEED_THRESHOLD_MPS;
+  const dragging = input.chassisContact &&
+    (Math.abs(input.speedMps) >= DRAG_SPEED_THRESHOLD_MPS || input.driveDemand === true);
   const damage = (impactApplied ? IMPACT_DAMAGE_FRACTION : 0) +
     (dragging ? DRAG_DAMAGE_PER_SECOND * input.durationSeconds : 0);
   return {

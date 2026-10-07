@@ -557,7 +557,18 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const position = textElement('span', 'visually-hidden', '');
   position.dataset.ui = 'position';
   hud.append(timeCard, moneyCard, capacityCard, speedCard, engineCard, position);
-  panel.append(hud);
+  const engineLoad = document.createElement('div');
+  engineLoad.className = 'engine-load-meter';
+  engineLoad.dataset.ui = 'engine-load';
+  engineLoad.setAttribute('role', 'meter');
+  engineLoad.setAttribute('aria-label', 'Esfuerzo del motor');
+  engineLoad.setAttribute('aria-valuemin', '0');
+  engineLoad.setAttribute('aria-valuemax', '100');
+  engineLoad.append(
+    textElement('span', 'engine-load-fill', ''),
+    textElement('strong', 'engine-load-icon', 'M'),
+  );
+  panel.append(hud, engineLoad);
 
   const delivery = actionButton('Entregar carga', 'small-action', () =>
     dispatch({ type: 'DELIVER_REQUEST' }));
@@ -629,6 +640,12 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   setUiText(screen, 'speed', `${Math.abs(snapshot.speedMps).toFixed(1)} m/s`);
   setUiText(screen, 'position', `${snapshot.vehicleX.toFixed(1)} m`);
   setUiText(screen, 'engine', `${snapshot.engineHealthPercent} %`);
+  const engineLoad = screen.querySelector<HTMLElement>('[data-ui="engine-load"]');
+  if (engineLoad) {
+    engineLoad.style.setProperty('--engine-load', `${snapshot.engineLoadPercent}%`);
+    engineLoad.classList.toggle('is-maxed', snapshot.engineLoadPercent >= 100);
+    engineLoad.setAttribute('aria-valuenow', String(snapshot.engineLoadPercent));
+  }
   const onboardPassengers = ride.requests.filter((item) => item.status === 'onboard').length;
   setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
   const timeCard = screen.querySelector<HTMLElement>('.ride-time-card');

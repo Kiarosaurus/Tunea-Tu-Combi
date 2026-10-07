@@ -101,7 +101,8 @@ BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 ```
 
 La interfaz recorre todos esos estados durante la campaña completa. Cada nivel
-entrega una combi base, piezas incluidas y un presupuesto fijo de construcción.
+abre una cuadrícula vacía, entrega el kit gratuito en la paleta y asigna un
+presupuesto fijo de construcción.
 Para transportar un pasajero hace falta un segundo asiento. Las compras se hacen
 desde la misma paleta de piezas y pueden devolverse antes del recorrido.
 
@@ -114,7 +115,7 @@ parrilla, portacarga y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa y
-`Espacio` recoge una solicitud cercana; si no hay una disponible, frena. Los
+`Espacio` frena. Recoger exige detenerse casi por completo. Los
 pasajeros aparecen junto a la pista y también se recogen haciendo clic
 directamente sobre ellos; al llegar a su parada bajan automáticamente y liberan
 el asiento. `E` se conserva como alternativa de teclado y para las cargas.
@@ -138,7 +139,12 @@ fichas mínimas de los pasajeros a bordo con destino, masa y tarifa.
 El cronómetro, dinero, velocidad, salud del motor, pausa y controles de conducción flotan como
 instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
 Los golpes de carrocería contra la pista reducen el motor en 25 % y el arrastre
-continuo lo deteriora gradualmente; el humo comunica el daño sin abrir otro panel.
+continuo lo deteriora gradualmente, incluso si la combi casi no avanza mientras
+se fuerza el acelerador. Una barra vertical acumula esfuerzo: al permanecer llena,
+la salud baja cinco puntos por segundo; al soltar, se enfría. El humo comunica el
+daño sin abrir otro panel. La cámara mantiene la combi centrada en ambos ejes.
+En el borde posterior del primer recorrido, un patrullero bloquea la salida y
+termina el intento por arresto antes de que la combi pueda caer fuera del mundo.
 Las piezas sin conexión caen al piso interior, se amontonan como desorden y no
 aportan función. El fondo usa capas periódicas de paralaje para que nubes, cerros,
 edificios y mobiliario continúen sin saltos al avanzar.

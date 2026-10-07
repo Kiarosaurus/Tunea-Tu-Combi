@@ -54,9 +54,12 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
     ? [{ x: -1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y },
       { x: 1.05 - centerOfMass.x, y: -0.55 - centerOfMass.y }]
     : configuredWheels;
+  const chassisBottom = 0.405 - centerOfMass.y - 0.625;
+  const lowestLocalPoint = Math.min(chassisBottom,
+    ...wheelOffsets.map((offset) => offset.y - 0.4));
   const body: RigidBody = {
     id: `${levelId}-combi`,
-    position: { x: 2, y: 2.5 },
+    position: { x: 2, y: -lowestLocalPoint + 0.12 },
     angleRadians: 0,
     velocity: { x: 0, y: 0 },
     angularVelocity: 0,
@@ -90,17 +93,20 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
 
 function terrainForLevel(levelId: string): readonly TerrainSegment[] {
   if (levelId === 'primer-recorrido') return [
-    { start: { x: -2, y: 0 }, end: { x: 12, y: 0 } },
-    { start: { x: 12, y: 0 }, end: { x: 16, y: 0.25 } },
-    { start: { x: 16, y: 0.25 }, end: { x: 22, y: 0.25 } },
-    { start: { x: 22, y: 0.25 }, end: { x: 26, y: 0 } },
-    { start: { x: 26, y: 0 }, end: { x: 35, y: 0 } },
+    { start: { x: -2, y: 0 }, end: { x: 18, y: 0 } },
+    { start: { x: 18, y: 0 }, end: { x: 22, y: 0.25 } },
+    { start: { x: 22, y: 0.25 }, end: { x: 34, y: 0.25 } },
+    { start: { x: 34, y: 0.25 }, end: { x: 38, y: 0 } },
+    { start: { x: 38, y: 0 }, end: { x: 52, y: 0 } },
   ];
   if (levelId === 'subida-al-cerro') return [
     { start: { x: -2, y: 0 }, end: { x: 8, y: 0 } },
-    { start: { x: 8, y: 0 }, end: { x: 20, y: 3.2 } },
-    { start: { x: 20, y: 3.2 }, end: { x: 28, y: 5.2 } },
-    { start: { x: 28, y: 5.2 }, end: { x: 40, y: 5.2 } },
+    { start: { x: 8, y: 0 }, end: { x: 12, y: 1.2 } },
+    { start: { x: 12, y: 1.2 }, end: { x: 18, y: 1.2 } },
+    { start: { x: 18, y: 1.2 }, end: { x: 22, y: 2.4 } },
+    { start: { x: 22, y: 2.4 }, end: { x: 29, y: 2.4 } },
+    { start: { x: 29, y: 2.4 }, end: { x: 34, y: 3.8 } },
+    { start: { x: 34, y: 3.8 }, end: { x: 40, y: 3.8 } },
   ];
   if (levelId === 'dia-de-mercado') return [
     { start: { x: -2, y: 0 }, end: { x: 9, y: 0 } },

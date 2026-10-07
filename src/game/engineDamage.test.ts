@@ -21,6 +21,16 @@ describe('calculateEngineDamage', () => {
     expect(result.health).toBeCloseTo(0.67);
   });
 
+  it('continúa dañando al arrastrar aunque la combi quede casi inmóvil', () => {
+    const result = calculateEngineDamage({
+      health: 0.75, durationSeconds: 1, chassisContact: true,
+      contactStarted: false, maximumNormalImpulseNs: 0, speedMps: 0.02,
+      driveDemand: true,
+    });
+    expect(result.dragging).toBe(true);
+    expect(result.health).toBeCloseTo(0.67);
+  });
+
   it('no daña el motor por apoyo suave o contacto de llantas', () => {
     expect(calculateEngineDamage({
       health: 1, durationSeconds: 1, chassisContact: false,
@@ -28,7 +38,7 @@ describe('calculateEngineDamage', () => {
     }).health).toBe(1);
     expect(calculateEngineDamage({
       health: 1, durationSeconds: 1, chassisContact: true,
-      contactStarted: true, maximumNormalImpulseNs: 20, speedMps: 0.1,
+      contactStarted: true, maximumNormalImpulseNs: 20, speedMps: 0,
     }).health).toBe(1);
   });
 });

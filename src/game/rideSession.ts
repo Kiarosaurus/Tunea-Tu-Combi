@@ -5,8 +5,9 @@ import { generateLevelOneRequests, requestFare, type RideRequest } from './reque
 export type { RideRequest } from './requests';
 
 export const RIDE_DURATION_SECONDS = 60;
-export const LEVEL_ONE_FINISH_X = 31;
-export const STOP_RADIUS_METERS = 2.5;
+export const LEVEL_ONE_FINISH_X = 48;
+export const STOP_RADIUS_METERS = 3.5;
+export const PICKUP_MAX_SPEED_MPS = 0.35;
 
 export type RequestStatus = 'waiting' | 'onboard' | 'delivered' | 'missed';
 
@@ -91,12 +92,15 @@ export class RideSession {
     if (this.#remainingSeconds === 0 || vehicleX >= this.#finishX) this.#finished = true;
   }
 
-  collect(requestId: string, vehicleX: number, capacity: VehicleCapacity): void {
+  collect(requestId: string, vehicleX: number, speedMps: number, capacity: VehicleCapacity): void {
     if (this.#finished) throw new Error('El recorrido ya terminó.');
     const progress = this.#requests.find((item) => item.request.id === requestId);
     if (!progress || progress.status !== 'waiting') throw new Error('La solicitud ya no está disponible.');
     if (Math.abs(vehicleX - progress.request.originX) > STOP_RADIUS_METERS) {
       throw new Error('Acércate al paradero de origen.');
+    }
+    if (!Number.isFinite(speedMps) || Math.abs(speedMps) > PICKUP_MAX_SPEED_MPS) {
+      throw new Error('Frena por completo para recoger.');
     }
     const availableCapacity = capacity[progress.request.kind];
     const onboardCount = this.#requests.filter((item) =>

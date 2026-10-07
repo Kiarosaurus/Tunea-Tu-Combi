@@ -13,26 +13,57 @@ function memoryStorage(): StorageLike {
   };
 }
 
-function enterWorkshop(controller: AppController): void {
+function enterWorkshop(controller: AppController, assemble = true): void {
   controller.dispatch({ type: 'BOOT_COMPLETED' });
   controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
   controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'primer-recorrido' });
+  if (assemble) assembleBaseVehicle(controller);
+}
+
+function assembleBaseVehicle(controller: AppController): void {
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'wheel', column: 1, row: 5 });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'wheel', column: 7, row: 5 });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'engine', column: 6, row: 3 });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'seat', column: 3, row: 3 });
+}
+
+function addPassengerSeat(controller: AppController): void {
+  controller.dispatch({ type: 'BUY_PART', kind: 'seat' });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'seat', column: 4, row: 3 });
+}
+
+function addCargoSupports(controller: AppController, suspension = false): void {
+  addPassengerSeat(controller);
+  controller.dispatch({ type: 'BUY_PART', kind: 'roofRack' });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'roofRack', column: 2, row: 2 });
+  controller.dispatch({ type: 'BUY_PART', kind: 'rearCarrier' });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'rearCarrier', column: 0, row: 4 });
+  if (suspension) {
+    controller.dispatch({ type: 'BUY_PART', kind: 'suspension' });
+    controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'suspension', column: 4, row: 5 });
+  }
 }
 
 function completeRide(controller: AppController): void {
   controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
-  for (let index = 0; index < 1900 && controller.snapshot.state === 'PLAYING'; index += 1) {
+  for (let index = 0; index < 3700 && controller.snapshot.state === 'PLAYING'; index += 1) {
     controller.update(1 / 60);
     const snapshot = controller.snapshot;
-    for (const progress of snapshot.ride?.requests ?? []) {
-      if (progress.status === 'waiting' &&
-        Math.abs(snapshot.vehicleX - progress.request.originX) < 1.8) {
-        controller.dispatch({ type: 'COLLECT_REQUEST', requestId: progress.request.id });
+    const waiting = snapshot.ride?.requests.find((progress) => progress.status === 'waiting');
+    if (waiting) {
+      const distance = waiting.request.originX - snapshot.vehicleX;
+      const shouldBrake = distance < Math.max(2.5, Math.abs(snapshot.speedMps) * 1.35) &&
+        distance > -2.3;
+      controller.dispatch({ type: 'SET_THROTTLE', value: shouldBrake ? 0 : 1 });
+      controller.dispatch({ type: 'SET_BRAKE', value: shouldBrake });
+      if (Math.abs(distance) < 2.3 && Math.abs(snapshot.speedMps) <= 0.35) {
+        controller.dispatch({ type: 'COLLECT_REQUEST', requestId: waiting.request.id });
+        controller.dispatch({ type: 'SET_BRAKE', value: false });
+        controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
       }
-      if (progress.status === 'onboard' &&
-        Math.abs(snapshot.vehicleX - progress.request.destinationX) < 1.8) {
-        controller.dispatch({ type: 'DELIVER_REQUEST' });
-      }
+    } else {
+      controller.dispatch({ type: 'SET_BRAKE', value: false });
+      controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     }
   }
 }
@@ -59,41 +90,52 @@ describe('flujo vertical del primer recorrido', () => {
     const storage = memoryStorage();
     const controller = new AppController(new LocalSaveRepository(storage));
     enterWorkshop(controller);
-    controller.dispatch({ type: 'BUY_PART', kind: 'seat' });
-    controller.dispatch({ type: 'PLACE_PART', kind: 'seat', anchor: 'passengerSeat' });
+    addCargoSupports(controller);
     controller.dispatch({ type: 'START_RIDE' });
     expect(controller.snapshot.state).toBe('PLAYING');
-    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
-    let maximumObservedPayloadKg = 0;
-
-    for (let index = 0; index < 1800 && controller.snapshot.state === 'PLAYING'; index += 1) {
-      controller.update(1 / 60);
-      maximumObservedPayloadKg = Math.max(maximumObservedPayloadKg,
-        controller.worldSnapshot.payloadMassKg);
-      const snapshot = controller.snapshot;
-      for (const progress of snapshot.ride?.requests ?? []) {
-        if (progress.status === 'waiting' &&
-          Math.abs(snapshot.vehicleX - progress.request.originX) < 1.2) {
-          controller.dispatch({ type: 'COLLECT_REQUEST', requestId: progress.request.id });
-        }
-        if (progress.status === 'onboard' &&
-          Math.abs(snapshot.vehicleX - progress.request.destinationX) < 1.2) {
-          controller.dispatch({ type: 'DELIVER_REQUEST' });
-        }
-      }
-    }
+    completeRide(controller);
 
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(6);
     expect(controller.snapshot.game.unlockedLevel).toBe(2);
-    expect(maximumObservedPayloadKg).toBeGreaterThan(0);
-    expect(controller.snapshot.ride?.maximumPayloadMassKg).toBe(maximumObservedPayloadKg);
+    expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(0);
 
     const reloaded = new AppController(new LocalSaveRepository(storage));
     expect(reloaded.snapshot.game.wallet).toBe(controller.snapshot.game.wallet);
     expect(reloaded.snapshot.game.unlockedLevel).toBe(2);
     expect(reloaded.snapshot.game.workshopBuild.passengerSeat).toBe('seat');
+  });
+
+  it('abre cada nivel con la cuadrícula vacía y el kit en la paleta', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller, false);
+    expect(gridForModel(controller.snapshot.game)).toEqual([]);
+    expect(controller.snapshot.game.ownedParts).toMatchObject({ wheel: 2, engine: 1, seat: 1 });
+  });
+
+  it('vuelve a acelerar después de frenar y recoger', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    addCargoSupports(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 30; index += 1) controller.update(1 / 60);
+    controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
+    controller.dispatch({ type: 'PAUSE' });
+    controller.dispatch({ type: 'RESUME' });
+    controller.dispatch({ type: 'RETRY' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    while (controller.snapshot.vehicleX < 5.8) controller.update(1 / 60);
+    controller.dispatch({ type: 'SET_BRAKE', value: true });
+    while (Math.abs(controller.snapshot.speedMps) > 0.05) controller.update(1 / 60);
+    controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'primer-pasajero' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.speedMps).toBeGreaterThan(1);
+    expect(controller.snapshot.vehicleX).toBeGreaterThan(7);
+    expect(Math.abs(controller.worldSnapshot.body.angleRadians)).toBeLessThan(0.2);
+    expect(controller.snapshot.engineHealthPercent).toBeGreaterThan(85);
   });
 
   it('detiene reloj y física al pausar', () => {
@@ -103,7 +145,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.update(1 / 60);
     controller.dispatch({ type: 'PAUSE' });
     const before = controller.snapshot;
-    for (let index = 0; index < 180; index += 1) controller.update(1 / 60);
+    for (let index = 0; index < 360; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.ride?.remainingSeconds).toBe(before.ride?.remainingSeconds);
     expect(controller.snapshot.vehicleX).toBe(before.vehicleX);
     controller.dispatch({ type: 'RESUME' });
@@ -120,6 +162,20 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.state).toBe('PLAYING');
     expect(controller.worldSnapshot.body.wheels.every((wheel) =>
       wheel.suspension?.stiffnessNPerM === 24000)).toBe(true);
+  });
+
+  it('mantiene estable la simulación al recoger el scooter sin suspensión', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    addCargoSupports(controller);
+    expect(gridForModel(controller.snapshot.game)
+      .some((placement) => placement.kind === 'suspension')).toBe(false);
+    controller.dispatch({ type: 'START_RIDE' });
+    for (let index = 0; index < 90; index += 1) controller.update(1 / 60);
+    expect(controller.worldSnapshot.joints.every((joint) => !joint.broken)).toBe(true);
+    completeRide(controller);
+    expect(controller.snapshot.message).not.toContain('simulación se detuvo');
+    expect(controller.snapshot.state).toBe('RESULTS');
   });
 
   it('monta una parrilla como unión física con masa y umbral', () => {
@@ -141,6 +197,8 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'subida-al-cerro' });
+    assembleBaseVehicle(controller);
+    addPassengerSeat(controller);
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
@@ -156,6 +214,8 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'dia-de-mercado' });
+    assembleBaseVehicle(controller);
+    addCargoSupports(controller);
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
@@ -173,6 +233,8 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'pista-danada' });
+    assembleBaseVehicle(controller);
+    addCargoSupports(controller, true);
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
@@ -188,6 +250,8 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'hora-punta' });
+    assembleBaseVehicle(controller);
+    addCargoSupports(controller, true);
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
@@ -207,7 +271,6 @@ describe('flujo vertical del primer recorrido', () => {
 
     const noSeat = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(noSeat);
-    noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
     noSeat.dispatch({ type: 'REMOVE_PART', anchor: 'driverSeat' });
     noSeat.dispatch({ type: 'START_RIDE' });
     expect(noSeat.snapshot.state).toBe('WORKSHOP');
@@ -229,8 +292,31 @@ describe('flujo vertical del primer recorrido', () => {
       controller.dispatch({ type: 'REMOVE_GRID_PART', placementId });
     }
     controller.dispatch({ type: 'START_RIDE' });
-    for (let index = 0; index < 180; index += 1) controller.update(1 / 60);
+    for (let index = 0; index < 360; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.engineHealthPercent).toBeLessThanOrEqual(75);
+  });
+
+  it('muestra carga máxima y desgasta el motor al sostener el acelerador', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 360; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.engineLoadPercent).toBe(100);
+    expect(controller.snapshot.engineHealthPercent).toBeLessThan(100);
+  });
+
+  it('arresta a la combi que retrocede fuera del primer recorrido', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: -1 });
+    for (let index = 0; index < 600 && controller.snapshot.state === 'PLAYING'; index += 1) {
+      controller.update(1 / 60);
+    }
+    expect(controller.snapshot.state).toBe('RESULTS');
+    expect(controller.snapshot.won).toBe(false);
+    expect(controller.snapshot.message).toContain('policía');
   });
 
   it('carga el perfil de demostración y conserva movimiento reducido', () => {
