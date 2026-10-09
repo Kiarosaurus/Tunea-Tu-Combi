@@ -14,8 +14,8 @@ describe('primer recorrido', () => {
     expect(ride.snapshot.maximumPayloadMassKg).toBeGreaterThan(0);
     expect(ride.snapshot.deliveredRevenue).toBe(0);
     expect(() => ride.deliver(10)).toThrow('destino');
-    expect(ride.deliver(16)).toBe(3);
-    expect(ride.snapshot.deliveredRevenue).toBe(3);
+    expect(ride.deliver(22)).toBe(5);
+    expect(ride.snapshot.deliveredRevenue).toBe(5);
   });
 
   it('obliga a detener la combi antes de recoger', () => {
@@ -66,15 +66,12 @@ describe('primer recorrido', () => {
   it('gana tres estrellas con todas las entregas y desbloquea nivel 2', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 8, 0, oneSeat);
-    ride.deliver(16);
-    ride.collect('segundo-pasajero', 22, 0, oneSeat);
-    ride.deliver(30);
-    const cargo = ride.snapshot.requests.find((item) => item.request.kind !== 'passenger')?.request;
-    expect(cargo).toBeDefined();
-    if (!cargo) return;
-    ride.collect(cargo.id, cargo.originX, 0, allCapacity);
-    ride.deliver(cargo.destinationX);
-    ride.advance(60, cargo.destinationX);
+    ride.deliver(22);
+    ride.collect('segundo-pasajero', 31, 0, oneSeat);
+    ride.deliver(45);
+    ride.collect('tercer-pasajero', 58, 0, allCapacity);
+    ride.deliver(72);
+    ride.advance(60, 96);
     const initial = createInitialGameModel();
     const result = applyRideResult(initial, ride.snapshot, 'primer-recorrido');
     expect(result.won).toBe(true);
@@ -89,17 +86,17 @@ describe('primer recorrido', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 8, 0, oneSeat);
     expect(ride.deliverArrived(8)).toEqual([]);
-    expect(ride.deliverArrived(16)).toEqual([{ requestId: 'primer-pasajero', fare: 3 }]);
+    expect(ride.deliverArrived(22)).toEqual([{ requestId: 'primer-pasajero', fare: 5 }]);
     expect(ride.snapshot.requests.find((item) => item.request.id === 'primer-pasajero')?.status)
       .toBe('delivered');
-    expect(() => ride.collect('segundo-pasajero', 22, 0, oneSeat)).not.toThrow();
+    expect(() => ride.collect('segundo-pasajero', 31, 0, oneSeat)).not.toThrow();
   });
 
   it('fallar no acredita ingreso provisional ni desbloquea', () => {
     const ride = new RideSession();
     ride.collect('primer-pasajero', 8, 0, oneSeat);
-    ride.deliver(16);
-    ride.advance(60, 16);
+    ride.deliver(22);
+    ride.advance(60, 22);
     const result = applyRideResult(createInitialGameModel(), ride.snapshot, 'primer-recorrido');
     expect(result.won).toBe(false);
     expect(result.model.wallet).toBe(100);

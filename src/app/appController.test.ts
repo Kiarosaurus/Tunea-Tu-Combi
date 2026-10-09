@@ -48,7 +48,9 @@ function completeRide(controller: AppController): void {
   for (let index = 0; index < 3700 && controller.snapshot.state === 'PLAYING'; index += 1) {
     controller.update(1 / 60);
     const snapshot = controller.snapshot;
-    const waiting = snapshot.ride?.requests.find((progress) => progress.status === 'waiting');
+    const hasOnboard = snapshot.ride?.requests.some((progress) => progress.status === 'onboard') ?? false;
+    const waiting = hasOnboard ? undefined
+      : snapshot.ride?.requests.find((progress) => progress.status === 'waiting');
     if (waiting) {
       const distance = waiting.request.originX - snapshot.vehicleX;
       const shouldBrake = distance < Math.max(2.5, Math.abs(snapshot.speedMps) * 1.35) &&
@@ -62,7 +64,7 @@ function completeRide(controller: AppController): void {
       }
     } else {
       controller.dispatch({ type: 'SET_BRAKE', value: false });
-      controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+      controller.dispatch({ type: 'SET_THROTTLE', value: snapshot.engineLoadPercent >= 82 ? 0 : 1 });
     }
   }
 }
@@ -96,7 +98,7 @@ describe('flujo vertical del primer recorrido', () => {
 
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.won).toBe(true);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(6);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(15);
     expect(controller.snapshot.game.unlockedLevel).toBe(2);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(0);
 
@@ -215,7 +217,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(8);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(18);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(3);
   });
@@ -233,7 +235,7 @@ describe('flujo vertical del primer recorrido', () => {
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.vehicleX).toBeGreaterThan(4);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(9);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(20);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(4);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(30);
@@ -251,7 +253,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(10);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(20);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
   });
@@ -268,7 +270,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(11);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(25);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
     expect(controller.snapshot.game.completedLevels['hora-punta']).toBeDefined();
@@ -333,9 +335,14 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.message).toContain('explotó');
   });
 
-  it('arresta a la combi que retrocede fuera del primer recorrido', () => {
-    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
-    enterWorkshop(controller);
+  it('arresta a la combi que retrocede fuera de cualquier recorrido', () => {
+    const storage = memoryStorage();
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(5), false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'hora-punta' });
+    assembleBaseVehicle(controller);
     controller.dispatch({ type: 'START_RIDE' });
     controller.dispatch({ type: 'SET_THROTTLE', value: -1 });
     for (let index = 0; index < 600 && controller.snapshot.state === 'PLAYING'; index += 1) {
@@ -344,6 +351,20 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.won).toBe(false);
     expect(controller.snapshot.message).toContain('policía');
+  });
+
+  it('reintenta desde resultados sin obligar a pasar por el taller', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: -1 });
+    for (let index = 0; index < 600 && controller.snapshot.state === 'PLAYING'; index += 1) {
+      controller.update(1 / 60);
+    }
+    expect(controller.snapshot.state).toBe('RESULTS');
+    controller.dispatch({ type: 'REPLAY_RIDE' });
+    expect(controller.snapshot.state).toBe('PLAYING');
+    expect(controller.snapshot.ride?.remainingSeconds).toBe(60);
   });
 
   it('carga el perfil de demostración y conserva movimiento reducido', () => {

@@ -5,7 +5,7 @@ import { generateLevelOneRequests, requestFare, type RideRequest } from './reque
 export type { RideRequest } from './requests';
 
 export const RIDE_DURATION_SECONDS = 60;
-export const LEVEL_ONE_FINISH_X = 48;
+export const LEVEL_ONE_FINISH_X = 96;
 export const STOP_RADIUS_METERS = 3.5;
 export const REQUEST_NOTICE_RADIUS_METERS = 7;
 export const PICKUP_MAX_SPEED_MPS = 0.35;

@@ -18,7 +18,8 @@ describe('generación de solicitudes', () => {
 
   it('incluye pasajeros y una carga con masa, capacidad y tarifa positivas', () => {
     const requests = generateLevelOneRequests('primer-recorrido-base');
-    expect(requests.filter((request) => request.kind === 'passenger')).toHaveLength(2);
+    expect(requests.filter((request) => request.kind === 'passenger')).toHaveLength(4);
+    expect(requests).toHaveLength(6);
     expect(requests.some((request) => request.kind !== 'passenger')).toBe(true);
     for (const request of requests) {
       expect(request.massKg).toBeGreaterThan(0);
@@ -41,11 +42,23 @@ describe('generación de solicitudes', () => {
     const hill = generateRequests('subida-al-cerro', 'cerro-base');
     const market = generateRequests('dia-de-mercado', 'mercado-base');
     expect(hill.every((request) => request.kind === 'passenger')).toBe(true);
-    expect(market.map((request) => request.kind)).toEqual(['passenger', 'roofCargo', 'scooter']);
+    expect(new Set(market.map((request) => request.kind))).toEqual(
+      new Set(['passenger', 'roofCargo', 'scooter']),
+    );
     expect(hill.reduce((total, request) => total + requestFare(request), 0))
       .toBeGreaterThanOrEqual(LEVELS[1]?.quota ?? Number.POSITIVE_INFINITY);
     expect(market.reduce((total, request) => total + requestFare(request), 0))
       .toBeGreaterThanOrEqual(LEVELS[2]?.quota ?? Number.POSITIVE_INFINITY);
+  });
+
+  it('ofrece más ingresos que los necesarios para tres estrellas', () => {
+    for (const level of LEVELS) {
+      const totalAvailable = generateRequests(level.id, level.seed)
+        .reduce((total, request) => total + requestFare(request), 0);
+      expect(totalAvailable).toBeGreaterThan(level.starGoals[2]);
+      expect(level.finishX / level.maxSpeedMps).toBeGreaterThan(20);
+      expect(level.durationSeconds).toBe(60);
+    }
   });
 
   it('cubre las cuotas de pista dañada y hora punta con todos los soportes', () => {

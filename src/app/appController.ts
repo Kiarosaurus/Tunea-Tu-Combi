@@ -31,7 +31,7 @@ import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } f
 import { generateRequests } from '../game/requests';
 import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
-import { LEVEL_ONE_ARREST_X } from '../game/roadLimits';
+import { ARREST_X } from '../game/roadLimits';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
 import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
@@ -59,6 +59,7 @@ export type AppAction =
   | { readonly type: 'PAUSE' }
   | { readonly type: 'RESUME' }
   | { readonly type: 'RETRY' }
+  | { readonly type: 'REPLAY_RIDE' }
   | { readonly type: 'ABORT_RIDE' }
   | { readonly type: 'RESET_PROGRESS' }
   | { readonly type: 'LOAD_DEMO_PROFILE' }
@@ -215,7 +216,7 @@ export class AppController {
           }
         }
         const world = this.#world.snapshot();
-        if (this.#selectedLevelId === 'primer-recorrido' && world.body.position.x <= LEVEL_ONE_ARREST_X) {
+        if (world.body.position.x <= ARREST_X) {
           this.#arrestRide();
           return;
         }
@@ -345,6 +346,14 @@ export class AppController {
         this.#ride = null;
         this.#world = createDemoWorld();
         this.#machine.transition('WORKSHOP');
+        return;
+      case 'REPLAY_RIDE':
+        if (this.#machine.state !== 'RESULTS' || !this.#selectedLevelId) {
+          throw new Error('Termina un recorrido antes de reintentarlo.');
+        }
+        this.#createRide(this.#selectedLevelId);
+        this.#message = 'Nuevo intento. Misma combi, nueva oportunidad.';
+        this.#machine.transition('PLAYING');
         return;
       case 'ABORT_RIDE':
         if (this.#machine.state !== 'PAUSED') throw new Error('Pausa antes de salir del recorrido.');

@@ -65,7 +65,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   root.replaceChildren(canvas, shade, header, screen, footer);
 
   let visibleState = '';
-  const workshopUi: WorkshopUiState = { selectedPart: null, dismissedGoals: new Set<string>() };
+  const workshopUi: WorkshopUiState = { selectedPart: null };
   return {
     canvas,
     render(snapshot): void {
@@ -100,7 +100,6 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
 
 interface WorkshopUiState {
   selectedPart: PartKind | null;
-  readonly dismissedGoals: Set<string>;
 }
 
 function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
@@ -118,10 +117,19 @@ function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => vo
 
 function createBootScreen(): HTMLElement {
   const panel = panelElement('boot-panel');
+  const loader = document.createElement('div');
+  loader.className = 'boot-loader';
+  loader.setAttribute('aria-hidden', 'true');
+  loader.append(
+    textElement('span', 'boot-wheel boot-wheel-left', ''),
+    textElement('span', 'boot-combi', 'TTC'),
+    textElement('span', 'boot-wheel boot-wheel-right', ''),
+  );
   panel.append(
-    textElement('p', 'eyebrow', 'Preparando el taller'),
+    textElement('p', 'eyebrow', 'Arrancando motores'),
     textElement('h1', 'hero-title', 'Tunea Tu Combi'),
-    textElement('p', 'hero-copy', 'Cargando la partida...'),
+    loader,
+    textElement('p', 'hero-copy', 'Preparando tu combi...'),
   );
   return panel;
 }
@@ -163,7 +171,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   const heading = document.createElement('div');
   heading.className = 'section-heading';
   heading.append(
-    actionButton('Volver', 'text-action', () => dispatch({ type: 'BACK' })),
+    actionButton('Menú', 'secondary-action compact-action', () => dispatch({ type: 'BACK' })),
     textElement('h1', 'section-title', 'Elige ruta'),
   );
 
@@ -177,12 +185,15 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
     card.type = 'button';
     card.className = 'level-card';
     card.disabled = !isUnlocked || !isPlayable;
-    card.setAttribute('aria-label', `${level.name}, cuota S/ ${level.quota}`);
+    const bestStars = best?.bestStars ?? 0;
+    card.setAttribute('aria-label', `${level.name}, ${bestStars} de 3 estrellas, meta S/ ${level.starGoals[2]}`);
     card.append(
       textElement('span', 'level-number', String(level.number).padStart(2, '0')),
       textElement('strong', 'level-name', level.name),
-      textElement('span', 'level-quota', `S/ ${level.quota}`),
-      textElement('span', 'level-best', best ? `Récord S/ ${best.bestRevenue}` : ''),
+      textElement('span', 'level-challenge', level.challenge),
+      textElement('span', 'level-quota', `3 estrellas: S/ ${level.starGoals[2]}`),
+      textElement('span', 'level-stars', `Progreso ${bestStars}/3`),
+      textElement('span', 'level-status', !isUnlocked ? 'Bloqueada' : bestStars === 3 ? 'Dominada' : 'Disponible'),
     );
     if (isPlayable) card.addEventListener('click', () =>
       dispatch({ type: 'SELECT_LEVEL', levelId: level.id }));
@@ -230,7 +241,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   panel.append(toolbar);
 
   goalsPopup.className = 'game-popup goals-popup';
-  goalsPopup.hidden = !level || workshopUi.dismissedGoals.has(level.id);
+  goalsPopup.hidden = true;
   goalsPopup.setAttribute('role', 'dialog');
   goalsPopup.setAttribute('aria-modal', 'true');
   goalsPopup.setAttribute('aria-label', 'Metas de estrellas');
@@ -247,8 +258,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     );
     goals.append(item);
   }
-  const closeGoals = actionButton('Listo', 'primary-action popup-action', () => {
-    if (level) workshopUi.dismissedGoals.add(level.id);
+  const closeGoals = actionButton('Volver al taller', 'primary-action popup-action', () => {
     goalsPopup.hidden = true;
   });
   goalsCard.append(goals,
@@ -705,19 +715,23 @@ function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement 
     textElement('p', 'eyebrow', 'Tiempo detenido'),
     textElement('h1', 'section-title', 'En pausa'),
     actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
-    actionButton('Reiniciar intento', 'small-action secondary-action', () => {
+    actionButton('Reiniciar intento', 'secondary-action', () => {
       if (window.confirm('¿Reiniciar este intento desde el inicio?')) dispatch({ type: 'RESTART_RIDE' });
     }),
-    actionButton('Volver al taller', 'text-action', () => {
+    actionButton('Editar combi', 'secondary-action', () => {
       if (window.confirm('¿Terminar este intento sin acreditar ingresos?')) dispatch({ type: 'ABORT_RIDE' });
     }),
-    actionButton('Menú', 'text-action', () => dispatch({ type: 'GO_MENU' })),
+    actionButton('Salir al menú', 'secondary-action', () => dispatch({ type: 'GO_MENU' })),
   );
   return panel;
 }
 
 function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
+  const nextLevel = level && snapshot.won
+    ? LEVELS.find((candidate) => candidate.number === level.number + 1 &&
+      candidate.number <= snapshot.game.unlockedLevel)
+    : undefined;
   const panel = panelElement('results-panel');
   panel.classList.toggle('is-game-over', snapshot.engineExploded);
   panel.append(
@@ -745,11 +759,22 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     definitionItem('Estabilidad', `${snapshot.ride?.stabilityPercent ?? 0} %`),
     definitionItem('Piezas sueltas', String(snapshot.ride?.lostPieces ?? 0)),
   );
+  const actions = document.createElement('div');
+  actions.className = 'result-actions';
+  if (nextLevel) {
+    actions.append(actionButton(`Siguiente: ${nextLevel.name}`, 'primary-action result-next', () =>
+      dispatch({ type: 'SELECT_LEVEL', levelId: nextLevel.id })));
+  }
+  actions.append(
+    actionButton('Reintentar con esta combi', nextLevel ? 'secondary-action' : 'primary-action', () =>
+      dispatch({ type: 'REPLAY_RIDE' })),
+    actionButton('Editar combi', 'secondary-action', () => dispatch({ type: 'RETRY' })),
+    actionButton('Elegir otra ruta', 'secondary-action', () => dispatch({ type: 'BACK' })),
+    actionButton('Salir al menú', 'secondary-action quiet-action', () => dispatch({ type: 'GO_MENU' })),
+  );
   panel.append(stars, summary,
     textElement('p', 'phase-note', `Semilla: ${snapshot.ride?.seed ?? 'sin intento'}`),
-    actionButton('Volver al taller', 'primary-action', () => dispatch({ type: 'RETRY' })),
-    actionButton('Elegir nivel', 'text-action', () => dispatch({ type: 'BACK' })),
-    actionButton('Menú', 'text-action', () => dispatch({ type: 'GO_MENU' })));
+    actions);
   return panel;
 }
 

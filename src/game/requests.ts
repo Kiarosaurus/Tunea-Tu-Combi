@@ -27,36 +27,68 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
   if (!seed.trim()) throw new Error('La semilla de solicitudes no puede estar vacía.');
   const random = seededRandom(seed);
   if (levelId === 'subida-al-cerro') return [
-    passengerRequest('cerro-uno', 'Collique', 'Vista Alegre', 4, 13, random),
-    passengerRequest('cerro-dos', 'Vista Alegre', 'Universitaria', 16, 25, random),
-    passengerRequest('cerro-tres', 'Universitaria', 'Canta Callao', 27, 34, random),
+    passengerRequest('cerro-uno-a', 'Collique', 'Vista Alegre', 4, 22, random),
+    passengerRequest('cerro-uno-b', 'Collique', 'Hospital Collique', 7, 27, random),
+    passengerRequest('cerro-dos-a', 'Vista Alegre', 'Universitaria', 29, 47, random),
+    passengerRequest('cerro-dos-b', 'Vista Alegre', 'Trapiche', 32, 52, random),
+    passengerRequest('cerro-tres-a', 'Universitaria', 'Canta Callao', 54, 72, random),
+    passengerRequest('cerro-tres-b', 'Universitaria', 'Naranjal', 57, 77, random),
+    passengerRequest('cerro-cuatro-a', 'Trapiche', 'Canta Callao', 80, 99, random),
+    passengerRequest('cerro-cuatro-b', 'Trapiche', 'Naranjal', 83, 102, random),
   ];
   if (levelId === 'dia-de-mercado') return [
-    passengerRequest('mercado-persona', 'Collique', 'Próceres', 4, 12, random),
-    cargoRequestForRoute('mercado-techo', 'Vista Alegre', 'Universitaria', 14, 24,
+    passengerRequest('mercado-uno-a', 'Collique', 'Próceres', 4, 18, random),
+    cargoRequestForRoute('mercado-uno-b', 'Collique', 'Hospital Collique', 7, 24,
       'roofCargo', random),
-    cargoRequestForRoute('mercado-scooter', 'Universitaria', 'Canta Callao', 26, 34,
+    passengerRequest('mercado-dos-a', 'Vista Alegre', 'Universitaria', 29, 44, random),
+    cargoRequestForRoute('mercado-dos-b', 'Vista Alegre', 'Trapiche', 32, 49,
       'scooter', random),
+    cargoRequestForRoute('mercado-tres-a', 'Universitaria', 'Trapiche', 55, 70,
+      'roofCargo', random),
+    passengerRequest('mercado-tres-b', 'Universitaria', 'Canta Callao', 58, 75, random),
+    cargoRequestForRoute('mercado-cuatro-a', 'Trapiche', 'Naranjal', 81, 98,
+      'scooter', random),
+    passengerRequest('mercado-cuatro-b', 'Trapiche', 'Canta Callao', 84, 104, random),
   ];
   if (levelId === 'pista-danada') return [
-    passengerRequest('pista-persona', 'Collique', 'Próceres', 4, 12, random),
-    cargoRequestForRoute('pista-techo', 'Vista Alegre', 'Universitaria', 14, 25,
+    passengerRequest('pista-uno-a', 'Collique', 'Próceres', 4, 19, random),
+    cargoRequestForRoute('pista-uno-b', 'Collique', 'Hospital Collique', 7, 24,
       'roofCargo', random),
-    cargoRequestForRoute('pista-scooter', 'Universitaria', 'Canta Callao', 27, 37,
+    cargoRequestForRoute('pista-dos-a', 'Vista Alegre', 'Universitaria', 31, 47,
+      'roofCargo', random),
+    passengerRequest('pista-dos-b', 'Vista Alegre', 'Trapiche', 34, 52, random),
+    passengerRequest('pista-tres-a', 'Universitaria', 'Trapiche', 59, 75, random),
+    cargoRequestForRoute('pista-tres-b', 'Universitaria', 'Canta Callao', 62, 80,
       'scooter', random),
+    cargoRequestForRoute('pista-cuatro-a', 'Trapiche', 'Naranjal', 86, 103,
+      'scooter', random),
+    passengerRequest('pista-cuatro-b', 'Trapiche', 'Canta Callao', 89, 109, random),
   ];
   if (levelId === 'hora-punta') return [
-    passengerRequest('punta-uno', 'Collique', 'Próceres', 3, 10, random),
-    cargoRequestForRoute('punta-techo', 'Próceres', 'Hospital Collique', 11, 20,
+    passengerRequest('punta-uno-a', 'Collique', 'Próceres', 3, 18, random),
+    cargoRequestForRoute('punta-uno-b', 'Collique', 'Hospital Collique', 6, 23,
       'roofCargo', random),
-    cargoRequestForRoute('punta-scooter', 'Hospital Collique', 'Trapiche', 21, 30,
+    cargoRequestForRoute('punta-dos-a', 'Próceres', 'Hospital Collique', 25, 41,
+      'roofCargo', random),
+    passengerRequest('punta-dos-b', 'Próceres', 'Universitaria', 28, 46, random),
+    passengerRequest('punta-tres-a', 'Hospital Collique', 'Trapiche', 49, 65, random),
+    cargoRequestForRoute('punta-tres-b', 'Hospital Collique', 'Canta Callao', 52, 70,
       'scooter', random),
-    passengerRequest('punta-dos', 'Trapiche', 'Canta Callao', 31, 39, random),
+    cargoRequestForRoute('punta-cuatro-a', 'Universitaria', 'Canta Callao', 73, 90,
+      'scooter', random),
+    passengerRequest('punta-cuatro-b', 'Universitaria', 'Naranjal', 76, 95, random),
+    passengerRequest('punta-cinco-a', 'Trapiche', 'Naranjal', 98, 114, random),
+    cargoRequestForRoute('punta-cinco-b', 'Trapiche', 'Canta Callao', 101, 117,
+      'roofCargo', random),
   ];
   if (levelId !== 'primer-recorrido') throw new Error(`No hay solicitudes para ${levelId}.`);
   return [
-    passengerRequest('primer-pasajero', 'Collique', 'Próceres', 8, 16, random),
-    passengerRequest('segundo-pasajero', 'Vista Alegre', 'Hospital Collique', 22, 30, random),
+    passengerRequest('primer-pasajero', 'Collique', 'Próceres', 8, 22, random),
+    passengerRequest('primer-alternativo', 'Collique', 'Hospital Collique', 11, 28, random),
+    passengerRequest('segundo-pasajero', 'Vista Alegre', 'Universitaria', 31, 45, random),
+    cargoRequestForRoute('segundo-alternativo', 'Vista Alegre', 'Trapiche', 34, 52,
+      'roofCargo', random),
+    passengerRequest('tercer-pasajero', 'Universitaria', 'Trapiche', 58, 72, random),
     cargoRequest(random),
   ];
 }
@@ -90,7 +122,7 @@ function passengerRequest(
 
 function cargoRequest(random: () => number): RideRequest {
   const kind: RequestKind = random() < 0.5 ? 'roofCargo' : 'scooter';
-  return cargoRequestForRoute('carga-terminal', 'Universitaria', 'Trapiche', 36, 41,
+  return cargoRequestForRoute('carga-terminal', 'Universitaria', 'Canta Callao', 61, 82,
     kind, random);
 }
 

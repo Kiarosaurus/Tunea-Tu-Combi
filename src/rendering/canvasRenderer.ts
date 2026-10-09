@@ -15,9 +15,9 @@ import {
   securedGridPlacements,
   type GridPlacement,
 } from '../game/model';
-import { PICKUP_MAX_SPEED_MPS, REQUEST_NOTICE_RADIUS_METERS } from '../game/rideSession';
+import { PICKUP_MAX_SPEED_MPS, REQUEST_NOTICE_RADIUS_METERS, STOP_RADIUS_METERS } from '../game/rideSession';
 import { requestFare } from '../game/requests';
-import { LEVEL_ONE_POLICE_CAR_X } from '../game/roadLimits';
+import { POLICE_CAR_X } from '../game/roadLimits';
 import type { WorldSnapshot } from '../physics/world';
 
 export interface CanvasRenderer extends Disposable {
@@ -133,10 +133,9 @@ function draw(
 
 function drawPoliceBarrier(context: CanvasRenderingContext2D, width: number, height: number,
   snapshot: AppSnapshot, world: WorldSnapshot): void {
-  if (snapshot.selectedLevelId !== 'primer-recorrido' ||
-    (snapshot.state !== 'PLAYING' && snapshot.state !== 'PAUSED')) return;
-  const groundY = terrainHeightAt(world.terrain, LEVEL_ONE_POLICE_CAR_X);
-  const point = worldToScreen({ x: LEVEL_ONE_POLICE_CAR_X, y: groundY }, world, width, height);
+  if (snapshot.state !== 'PLAYING' && snapshot.state !== 'PAUSED') return;
+  const groundY = terrainHeightAt(world.terrain, POLICE_CAR_X);
+  const point = worldToScreen({ x: POLICE_CAR_X, y: groundY }, world, width, height);
   const scale = worldScale(width, height);
   context.save();
   context.translate(point.x, point.y);
@@ -335,7 +334,8 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
       drawWaitingCargo(context, progress.request.kind, progress.request.visualVariant, 24, -4);
     }
     context.restore();
-    if (nearby) hits.push({ requestId: progress.request.id,
+    const withinPickup = Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS;
+    if (withinPickup) hits.push({ requestId: progress.request.id,
       x: point.x - 58, y: point.y - 108, width: 116, height: 108 });
   }
   return hits;

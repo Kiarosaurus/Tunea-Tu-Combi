@@ -43,27 +43,8 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await page.keyboard.down('d');
 }
 
-async function collectNextRequest(page: Page): Promise<void> {
-  const canvas = page.locator('canvas');
-  await expect(canvas).toHaveAttribute('data-pickup-request', /.+/, { timeout: 15_000 });
-  const requestId = await canvas.getAttribute('data-pickup-request');
-  await page.keyboard.up('d');
-  await page.keyboard.up('ArrowRight');
-  const approachSpeed = Math.abs(Number.parseFloat(
-    await page.locator('[data-ui="speed"]').innerText()));
-  await engageControlledBrake(page, approachSpeed >= 4.5 ? 100 : 50);
-  await expect.poll(async () => Math.abs(Number.parseFloat(
-    await page.locator('[data-ui="speed"]').innerText())), { timeout: 8_000 }).toBeLessThanOrEqual(0.05);
-  await page.keyboard.up(' ');
-  await pickupStoppedRequest(page, requestId ?? 'solicitud');
-  await expect.poll(async () => canvas.getAttribute('data-pickup-request'))
-    .not.toBe(requestId);
-  await page.keyboard.down('d');
-}
-
 async function dismissGoals(page: Page): Promise<void> {
-  await expect(page.getByRole('dialog', { name: 'Metas de estrellas' })).toBeVisible();
-  await page.getByRole('button', { name: 'Listo' }).click();
+  await expect(page.getByRole('dialog', { name: 'Metas de estrellas', includeHidden: true })).toBeHidden();
 }
 
 async function placeWorkshopPart(page: Page, partName: string, column: number, row: number): Promise<void> {
@@ -113,6 +94,8 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'LEVEL_SELECT');
   await expect(page.getByRole('button', { name: /Primer recorrido/ })).toBeEnabled();
   await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeDisabled();
+  await expect(page.getByText(/Récord/)).toHaveCount(0);
+  await expect(page.getByText('Solicitudes simultáneas y decisiones de capacidad')).toBeVisible();
 
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
   await dismissGoals(page);
@@ -122,6 +105,9 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
   await expect(page.locator('.grid-piece')).toHaveCount(1);
   await expect(page.getByRole('button', { name: /Mover asiento del conductor/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Metas' }).click();
+  await expect(page.getByRole('dialog', { name: 'Metas de estrellas' })).toBeVisible();
+  await page.getByRole('button', { name: 'Volver al taller' }).click();
   await assembleVehicle(page);
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
 
@@ -170,7 +156,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
 });
 
 test('completa el primer recorrido y conserva el progreso tras recargar', async ({ page }) => {
-  test.setTimeout(45_000);
+  test.setTimeout(80_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(artifactUrl);
@@ -202,14 +188,14 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   const revenue = page.locator('[data-ui="revenue"]');
   await expect(page.locator('canvas')).toHaveAttribute('data-route-code', 'CR27');
   await clickRequestOnRoute(page, 'primer-pasajero');
-  await expect(revenue).toHaveText('S/ 3', { timeout: 15_000 });
+  await expect(revenue).toHaveText('S/ 5', { timeout: 20_000 });
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('0 / 1');
   await clickRequestOnRoute(page, 'segundo-pasajero');
   await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
-  await expect(revenue).toHaveText('S/ 6', { timeout: 15_000 });
-  await clickRequestOnRoute(page, 'carga-terminal');
-  await expect(revenue).toHaveText('S/ 8', { timeout: 15_000 });
-  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
+  await expect(revenue).toHaveText('S/ 10', { timeout: 20_000 });
+  await clickRequestOnRoute(page, 'tercer-pasajero');
+  await expect(revenue).toHaveText('S/ 15', { timeout: 20_000 });
+  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 40_000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
   await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
@@ -250,48 +236,56 @@ test('carga un perfil de demostración y conserva preferencias accesibles', asyn
 });
 
 test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {
-  test.setTimeout(210_000);
+  test.setTimeout(360_000);
   await page.goto(artifactUrl);
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
   await dismissGoals(page);
   await assembleVehicle(page);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 8']);
+  await completeRoute(page, [
+    ['primer-pasajero', 'S/ 5'],
+    ['segundo-pasajero', 'S/ 10'],
+    ['tercer-pasajero', 'S/ 15'],
+  ]);
 
-  await page.getByRole('button', { name: 'Elegir nivel' }).click();
-  await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeEnabled();
-  await page.getByRole('button', { name: /Subida al cerro/ }).click();
+  await page.getByRole('button', { name: /Siguiente: Subida al cerro/ }).click();
   await dismissGoals(page);
   await assembleVehicle(page, false, false);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 9']);
+  await completeRoute(page, [
+    ['cerro-uno-a', 'S/ 5'], ['cerro-dos-a', 'S/ 10'],
+    ['cerro-tres-a', 'S/ 15'], ['cerro-cuatro-a', 'S/ 20'],
+  ]);
 
-  await page.getByRole('button', { name: 'Elegir nivel' }).click();
-  await expect(page.getByRole('button', { name: /Día de mercado/ })).toBeEnabled();
-  await page.getByRole('button', { name: /Día de mercado/ }).click();
+  await page.getByRole('button', { name: /Siguiente: Día de mercado/ }).click();
   await dismissGoals(page);
   await assembleVehicle(page);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 7', 'S/ 10']);
+  await completeRoute(page, [
+    ['mercado-uno-a', 'S/ 5'], ['mercado-dos-a', 'S/ 10'],
+    ['mercado-tres-a', 'S/ 15'], ['mercado-cuatro-a', 'S/ 20'],
+  ]);
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
   await expect(page.getByText('Masa máxima').locator('..')).toContainText('kg');
 
-  await page.getByRole('button', { name: 'Elegir nivel' }).click();
-  await expect(page.getByRole('button', { name: /Pista dañada/ })).toBeEnabled();
-  await page.getByRole('button', { name: /Pista dañada/ }).click();
+  await page.getByRole('button', { name: /Siguiente: Pista dañada/ }).click();
   await dismissGoals(page);
   await assembleVehicle(page, true);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 7', 'S/ 11']);
+  await completeRoute(page, [
+    ['pista-uno-a', 'S/ 5'], ['pista-dos-a', 'S/ 10'],
+    ['pista-tres-a', 'S/ 15'], ['pista-cuatro-a', 'S/ 20'],
+  ]);
 
-  await page.getByRole('button', { name: 'Elegir nivel' }).click();
-  await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
-  await page.getByRole('button', { name: /Hora punta/ }).click();
+  await page.getByRole('button', { name: /Siguiente: Hora punta/ }).click();
   await dismissGoals(page);
   await assembleVehicle(page, true);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
-  await completeRoute(page, ['S/ 3', 'S/ 6', 'S/ 9', 'S/ 12']);
+  await completeRoute(page, [
+    ['punta-uno-a', 'S/ 5'], ['punta-dos-a', 'S/ 10'], ['punta-tres-a', 'S/ 15'],
+    ['punta-cuatro-a', 'S/ 20'], ['punta-cinco-a', 'S/ 25'],
+  ]);
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
   await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('0');
   await page.reload();
@@ -304,18 +298,19 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
     };
     return saved.completedLevels?.['hora-punta']?.bestRevenue ?? 0;
   });
-  expect(finalRevenue).toBe(12);
+  expect(finalRevenue).toBe(25);
 });
 
-async function completeRoute(page: Page, revenues: readonly string[]): Promise<void> {
+async function completeRoute(page: Page,
+  deliveries: readonly (readonly [requestId: string, revenue: string])[]): Promise<void> {
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   const revenue = page.locator('[data-ui="revenue"]');
   await page.keyboard.down('d');
-  for (const expectedRevenue of revenues) {
-    await collectNextRequest(page);
-    await expect(revenue).toHaveText(expectedRevenue, { timeout: 15_000 });
+  for (const [requestId, expectedRevenue] of deliveries) {
+    await clickRequestOnRoute(page, requestId);
+    await expect(revenue).toHaveText(expectedRevenue, { timeout: 22_000 });
   }
-  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 30_000 });
+  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 45_000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
 }

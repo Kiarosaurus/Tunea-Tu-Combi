@@ -128,7 +128,9 @@ se conserva en el guardado local.
 La distribución de las ruedas también afecta la conducción: agruparlas hacia
 un solo lado aumenta con fuerza la resistencia al avance y reduce la tracción.
 Las solicitudes se generan de forma reproducible desde la semilla del intento:
-incluyen pasajeros y una carga para parrilla o scooter posterior. Toda carga
+cada recorrido ofrece entre seis y diez oportunidades, varias en pares cercanos
+que obligan a elegir según capacidad, estabilidad y soportes. Incluyen pasajeros
+y cargas para parrilla o scooter posterior. Toda carga
 aparece junto a su responsable, requiere además un asiento libre y se recoge
 directamente en la pista. Persona y objeto permanecen visibles al viajar. Cada
 persona ocupa la posición de su asiento; su masa e inercia se agregan mientras
@@ -148,20 +150,27 @@ se fuerza el acelerador. Una barra vertical acumula esfuerzo: al permanecer llen
 la salud baja dos puntos por segundo; al soltar, se enfría. El humo aumenta de
 densidad al caer la salud; al llegar a 0 %, el motor explota y termina en game
 over. La cámara mantiene la combi centrada en ambos ejes.
-En el borde posterior del primer recorrido, un patrullero bloquea la salida y
+En el borde posterior de cada recorrido, un patrullero bloquea la salida y
 termina el intento por arresto antes de que la combi pueda caer fuera del mundo.
 Las piezas sin conexión caen al piso interior, se amontonan como desorden y no
 aportan función. El fondo usa capas periódicas de paralaje para que nubes, cerros,
 edificios y mobiliario continúen sin saltos al avanzar.
 
-La subida al cerro introduce una pendiente prolongada y tres entregas. El día
+La subida al cerro introduce una pendiente prolongada y solicitudes en competencia. El día
 de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,
 carga alta y scooter sobre terreno ondulado. Cada recorrido conserva su propia
 cuota, meta, semilla y apariencia provisional.
 
 Pista dañada usa baches y rampas para comparar uniones rígidas contra suspensión
-reforzada. Hora punta combina pendientes, ondulaciones y cuatro solicitudes
-seguidas. Al terminar, el mejor ingreso de cada nivel permanece en el guardado.
+reforzada. Hora punta combina pendientes, ondulaciones y diez oportunidades.
+Las rutas miden entre 96 m y 120 m para ocupar una parte significativa del minuto.
+La selección muestra dominio de cero a tres estrellas y el reto de cada ruta; el
+mejor ingreso se conserva en el guardado por compatibilidad, pero no se presenta
+como un récord redundante.
+
+El modal de metas no interrumpe la entrada al taller: se abre solo desde el botón
+`Metas`. Desde resultados se puede reintentar inmediatamente con la misma combi,
+editarla, elegir otra ruta o abrir el taller de la siguiente ruta desbloqueada.
 
 El guardado local usa la clave `tunea-tu-combi:save:v1`. Se valida antes de
 cargar; si está corrupto, se conserva su texto original en memoria durante la

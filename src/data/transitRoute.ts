@@ -9,7 +9,7 @@ export interface TransitRoute {
   readonly stops: readonly TransitStop[];
 }
 
-// Tramo resumido de la ruta limeña CR27, adaptado a recorridos de 30 segundos.
+// Tramo resumido de la ruta limeña CR27, adaptado a intentos de 60 segundos.
 export const TRANSIT_ROUTE: TransitRoute = {
   code: 'CR27',
   direction: 'Comas - S.M.P.',

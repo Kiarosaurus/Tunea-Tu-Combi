@@ -97,7 +97,11 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 18, y: 0 }, end: { x: 22, y: 0.25 } },
     { start: { x: 22, y: 0.25 }, end: { x: 34, y: 0.25 } },
     { start: { x: 34, y: 0.25 }, end: { x: 38, y: 0 } },
-    { start: { x: 38, y: 0 }, end: { x: 52, y: 0 } },
+    { start: { x: 38, y: 0 }, end: { x: 54, y: 0 } },
+    { start: { x: 54, y: 0 }, end: { x: 59, y: 0.35 } },
+    { start: { x: 59, y: 0.35 }, end: { x: 72, y: 0.35 } },
+    { start: { x: 72, y: 0.35 }, end: { x: 77, y: 0 } },
+    { start: { x: 77, y: 0 }, end: { x: 100, y: 0 } },
   ];
   if (levelId === 'subida-al-cerro') return [
     { start: { x: -2, y: 0 }, end: { x: 8, y: 0 } },
@@ -106,7 +110,13 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 18, y: 1.2 }, end: { x: 22, y: 2.4 } },
     { start: { x: 22, y: 2.4 }, end: { x: 29, y: 2.4 } },
     { start: { x: 29, y: 2.4 }, end: { x: 34, y: 3.8 } },
-    { start: { x: 34, y: 3.8 }, end: { x: 40, y: 3.8 } },
+    { start: { x: 34, y: 3.8 }, end: { x: 46, y: 3.8 } },
+    { start: { x: 46, y: 3.8 }, end: { x: 53, y: 2.5 } },
+    { start: { x: 53, y: 2.5 }, end: { x: 66, y: 2.5 } },
+    { start: { x: 66, y: 2.5 }, end: { x: 73, y: 4.1 } },
+    { start: { x: 73, y: 4.1 }, end: { x: 87, y: 4.1 } },
+    { start: { x: 87, y: 4.1 }, end: { x: 94, y: 5.2 } },
+    { start: { x: 94, y: 5.2 }, end: { x: 109, y: 5.2 } },
   ];
   if (levelId === 'dia-de-mercado') return [
     { start: { x: -2, y: 0 }, end: { x: 9, y: 0 } },
@@ -114,6 +124,12 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 14, y: 0.7 }, end: { x: 20, y: 0.1 } },
     { start: { x: 20, y: 0.1 }, end: { x: 27, y: 0.9 } },
     { start: { x: 27, y: 0.9 }, end: { x: 40, y: 0 } },
+    { start: { x: 40, y: 0 }, end: { x: 50, y: 0.55 } },
+    { start: { x: 50, y: 0.55 }, end: { x: 61, y: 0.05 } },
+    { start: { x: 61, y: 0.05 }, end: { x: 73, y: 0.8 } },
+    { start: { x: 73, y: 0.8 }, end: { x: 84, y: 0.15 } },
+    { start: { x: 84, y: 0.15 }, end: { x: 96, y: 0.95 } },
+    { start: { x: 96, y: 0.95 }, end: { x: 114, y: 0 } },
   ];
   if (levelId === 'pista-danada') return [
     { start: { x: -2, y: 0 }, end: { x: 8, y: 0 } },
@@ -125,6 +141,18 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 25, y: 0.55 }, end: { x: 29, y: 0 } },
     { start: { x: 29, y: 0 }, end: { x: 33, y: 0.9 } },
     { start: { x: 33, y: 0.9 }, end: { x: 43, y: 0 } },
+    { start: { x: 43, y: 0 }, end: { x: 47, y: 0.8 } },
+    { start: { x: 47, y: 0.8 }, end: { x: 52, y: 0 } },
+    { start: { x: 52, y: 0 }, end: { x: 58, y: 0.35 } },
+    { start: { x: 58, y: 0.35 }, end: { x: 63, y: 0 } },
+    { start: { x: 63, y: 0 }, end: { x: 68, y: 1.05 } },
+    { start: { x: 68, y: 1.05 }, end: { x: 74, y: 0 } },
+    { start: { x: 74, y: 0 }, end: { x: 80, y: 0.6 } },
+    { start: { x: 80, y: 0.6 }, end: { x: 86, y: 0 } },
+    { start: { x: 86, y: 0 }, end: { x: 92, y: 1.15 } },
+    { start: { x: 92, y: 1.15 }, end: { x: 98, y: 0 } },
+    { start: { x: 98, y: 0 }, end: { x: 103, y: 0.7 } },
+    { start: { x: 103, y: 0.7 }, end: { x: 119, y: 0 } },
   ];
   if (levelId === 'hora-punta') return [
     { start: { x: -2, y: 0 }, end: { x: 7, y: 0 } },
@@ -135,6 +163,15 @@ function terrainForLevel(levelId: string): readonly TerrainSegment[] {
     { start: { x: 27, y: 0.5 }, end: { x: 31, y: 1.2 } },
     { start: { x: 31, y: 1.2 }, end: { x: 36, y: 0.2 } },
     { start: { x: 36, y: 0.2 }, end: { x: 45, y: 0.2 } },
+    { start: { x: 45, y: 0.2 }, end: { x: 53, y: 1.35 } },
+    { start: { x: 53, y: 1.35 }, end: { x: 60, y: 0.25 } },
+    { start: { x: 60, y: 0.25 }, end: { x: 68, y: 1.55 } },
+    { start: { x: 68, y: 1.55 }, end: { x: 76, y: 0.35 } },
+    { start: { x: 76, y: 0.35 }, end: { x: 84, y: 1.25 } },
+    { start: { x: 84, y: 1.25 }, end: { x: 93, y: 0.15 } },
+    { start: { x: 93, y: 0.15 }, end: { x: 101, y: 1.4 } },
+    { start: { x: 101, y: 1.4 }, end: { x: 109, y: 0.25 } },
+    { start: { x: 109, y: 0.25 }, end: { x: 124, y: 0.25 } },
   ];
   throw new Error(`No hay terreno jugable para ${levelId}.`);
 }

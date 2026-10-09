@@ -17,7 +17,7 @@ const ALLOWED_TRANSITIONS: Readonly<Record<AppState, readonly AppState[]>> = {
   WORKSHOP: ['MENU', 'LEVEL_SELECT', 'PLAYING'],
   PLAYING: ['MENU', 'PAUSED', 'RESULTS'],
   PAUSED: ['MENU', 'PLAYING', 'RESULTS'],
-  RESULTS: ['MENU', 'WORKSHOP', 'LEVEL_SELECT'],
+  RESULTS: ['MENU', 'WORKSHOP', 'LEVEL_SELECT', 'PLAYING'],
 };
 
 export class AppStateMachine {
