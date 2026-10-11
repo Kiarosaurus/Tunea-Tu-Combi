@@ -10,6 +10,10 @@ export const STOP_RADIUS_METERS = 3.5;
 export const REQUEST_NOTICE_RADIUS_METERS = 7;
 export const PICKUP_MAX_SPEED_MPS = 0.35;
 
+export function hasReachedDestination(vehicleX: number, destinationX: number): boolean {
+  return Number.isFinite(vehicleX) && Number.isFinite(destinationX) && vehicleX >= destinationX;
+}
+
 export type RequestStatus = 'waiting' | 'onboard' | 'delivered' | 'missed';
 
 export interface RequestProgress {
@@ -124,7 +128,7 @@ export class RideSession {
   deliver(vehicleX: number): number {
     if (this.#finished) throw new Error('El recorrido ya terminó.');
     const progress = this.#requests.find((item) => item.status === 'onboard' &&
-      Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS);
+      hasReachedDestination(vehicleX, item.request.destinationX));
     if (!progress) throw new Error('No hay un destino de pasajero cercano.');
     return this.#completeDelivery(progress.request);
   }
@@ -132,7 +136,7 @@ export class RideSession {
   deliverArrived(vehicleX: number): readonly CompletedDelivery[] {
     if (this.#finished) return [];
     const arrived = this.#requests.filter((item) => item.status === 'onboard' &&
-      Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS);
+      hasReachedDestination(vehicleX, item.request.destinationX));
     return arrived.map((progress) => ({
       requestId: progress.request.id,
       fare: this.#completeDelivery(progress.request),

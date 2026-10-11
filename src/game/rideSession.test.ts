@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { LEVELS } from '../data/levels';
 import { createInitialGameModel } from './model';
+import { generateRequests, requestFare } from './requests';
 import { applyRideResult, RideSession, RIDE_DURATION_SECONDS } from './rideSession';
 
 describe('primer recorrido', () => {
@@ -90,6 +92,22 @@ describe('primer recorrido', () => {
     expect(ride.snapshot.requests.find((item) => item.request.id === 'primer-pasajero')?.status)
       .toBe('delivered');
     expect(() => ride.collect('segundo-pasajero', 31, 0, oneSeat)).not.toThrow();
+  });
+
+  it('no baja pasajeros ni cargas antes de su destino en ninguna ruta', () => {
+    for (const level of LEVELS) {
+      const requests = generateRequests(level.id, level.seed);
+      for (const request of requests) {
+        const ride = new RideSession(level.seed, [request], level.durationSeconds, level.finishX);
+        ride.collect(request.id, request.originX, 0, allCapacity);
+        expect(ride.deliverArrived(request.destinationX - 0.01),
+          `${level.id}/${request.id} se entregó antes del destino`).toEqual([]);
+        expect(ride.deliverArrived(request.destinationX),
+          `${level.id}/${request.id} no se entregó al llegar`).toEqual([
+          { requestId: request.id, fare: requestFare(request) },
+        ]);
+      }
+    }
   });
 
   it('fallar no acredita ingreso provisional ni desbloquea', () => {

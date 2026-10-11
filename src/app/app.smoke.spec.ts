@@ -130,21 +130,18 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
 
   const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
   const targetCell = page.getByRole('button', { name: 'Celda columna 1, fila 1' });
-  await engine.evaluate((source) => {
-    const target = document.querySelector<HTMLElement>('[aria-label="Celda columna 1, fila 1"]');
-    if (!target) throw new Error('No se encontró la celda de prueba.');
-    const dataTransfer = new DataTransfer();
-    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
-    target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
-    Reflect.set(window, '__dragData', dataTransfer);
-  });
+  const engineBox = await engine.boundingBox();
+  const targetBox = await targetCell.boundingBox();
+  if (!engineBox || !targetBox) throw new Error('No se pudo medir el arrastre del taller.');
+  const grabOffset = { x: engineBox.width - 6, y: engineBox.height - 6 };
+  await page.mouse.move(engineBox.x + grabOffset.x, engineBox.y + grabOffset.y);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + grabOffset.x, targetBox.y + grabOffset.y, { steps: 4 });
   await expect(page.locator('.grid-drag-preview')).toBeVisible();
   await expect(page.locator('.grid-drag-preview')).toHaveClass(/is-valid/);
-  await targetCell.evaluate((target) => {
-    const dataTransfer = Reflect.get(window, '__dragData') as DataTransfer;
-    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
-    Reflect.deleteProperty(window, '__dragData');
-  });
+  await expect(page.locator('.pointer-drag-ghost')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByRole('button', { name: /Retirar Motor urbano de columna 1, fila 1/ })).toBeVisible();
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
   await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();

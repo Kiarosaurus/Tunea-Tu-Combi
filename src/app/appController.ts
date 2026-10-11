@@ -27,7 +27,8 @@ import {
   type AnchorId,
   type GameModel,
 } from '../game/model';
-import { applyRideResult, RideSession, STOP_RADIUS_METERS, type RideSnapshot } from '../game/rideSession';
+import { applyRideResult, hasReachedDestination, RideSession,
+  type RideSnapshot } from '../game/rideSession';
 import { generateRequests } from '../game/requests';
 import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
@@ -514,7 +515,7 @@ export class AppController {
     if (this.#machine.state !== 'PLAYING' || !this.#ride) throw new Error('No hay recorrido activo.');
     const vehicleX = this.#world.snapshot().body.position.x;
     const request = this.#ride.snapshot.requests.find((item) => item.status === 'onboard' &&
-      Math.abs(vehicleX - item.request.destinationX) <= STOP_RADIUS_METERS)?.request;
+      hasReachedDestination(vehicleX, item.request.destinationX))?.request;
     const fare = this.#ride.deliver(vehicleX);
     if (request) this.#detachRequestPayload(request.id);
     this.#message = `Entrega completada: S/ ${fare}.`;

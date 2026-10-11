@@ -18,6 +18,12 @@ import {
   type GridPlacement,
 } from '../game/model';
 import { STOP_RADIUS_METERS } from '../game/rideSession';
+import {
+  dragAnchorFromElement,
+  gridTargetFromPointer,
+  type GridCellTarget,
+  type GridDragAnchor,
+} from './gridPointer';
 
 export interface AppView extends Disposable {
   readonly canvas: HTMLCanvasElement;
@@ -312,8 +318,8 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     dragPreview.hidden = true;
     dragPreview.classList.remove('is-valid', 'is-invalid');
   };
-  const showDragPreview = (column: number, row: number): void => {
-    if (!dragging) return;
+  const showDragPreview = (column: number, row: number): boolean => {
+    if (!dragging) return false;
     const footprint = PART_FOOTPRINTS[dragging.kind];
     const candidate: GridPlacement = {
       id: dragging.placementId ?? 'preview',
@@ -328,6 +334,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     dragPreview.classList.toggle('is-valid', fits);
     dragPreview.classList.toggle('is-invalid', !fits);
     dragPreview.textContent = partName(dragging.kind);
+    return fits;
   };
   const placeAt = (kind: PartKind, column: number, row: number): void => {
     const candidate = candidateAt(kind, column, row);
@@ -367,6 +374,170 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     }
   };
 
+  interface PointerDragSession {
+    readonly pointerId: number;
+    readonly source: HTMLButtonElement;
+    readonly kind: PartKind;
+    readonly placementId?: string;
+    readonly anchor: GridDragAnchor;
+    readonly startX: number;
+    readonly startY: number;
+    latestX: number;
+    latestY: number;
+    active: boolean;
+    frame: number | null;
+    ghost: HTMLDivElement | null;
+    target: GridCellTarget | null;
+    targetFits: boolean;
+  }
+
+  const suppressedClicks = new WeakSet<HTMLButtonElement>();
+  let pointerDrag: PointerDragSession | null = null;
+  const readGridGeometry = () => {
+    const first = cellButtons[0]?.getBoundingClientRect();
+    const secondColumn = cellButtons[1]?.getBoundingClientRect();
+    const secondRow = cellButtons[BUILD_GRID_COLUMNS]?.getBoundingClientRect();
+    if (!first || !secondColumn || !secondRow) return null;
+    const columnStep = secondColumn.left - first.left;
+    const rowStep = secondRow.top - first.top;
+    if (columnStep <= 0 || rowStep <= 0) return null;
+    return {
+      originX: first.left,
+      originY: first.top,
+      columnStep,
+      rowStep,
+      cellWidth: first.width,
+      cellHeight: first.height,
+    };
+  };
+  const updatePointerDrag = (): void => {
+    const session = pointerDrag;
+    if (!session?.active) return;
+    session.frame = null;
+    const geometry = readGridGeometry();
+    if (!geometry) return;
+    const footprint = PART_FOOTPRINTS[session.kind];
+    if (!session.ghost) {
+      const ghost = document.createElement('div');
+      ghost.className = `pointer-drag-ghost piece-${session.kind}`;
+      ghost.textContent = shortPartName(session.kind);
+      ghost.style.width = `${footprint.columns * geometry.cellWidth +
+        (footprint.columns - 1) * (geometry.columnStep - geometry.cellWidth)}px`;
+      ghost.style.height = `${footprint.rows * geometry.cellHeight +
+        (footprint.rows - 1) * (geometry.rowStep - geometry.cellHeight)}px`;
+      document.body.append(ghost);
+      session.ghost = ghost;
+    }
+    session.ghost.style.transform = `translate3d(${session.latestX -
+      session.anchor.columnOffset * geometry.columnStep}px, ${session.latestY -
+      session.anchor.rowOffset * geometry.rowStep}px, 0)`;
+    const bounds = constructionGrid.getBoundingClientRect();
+    const inside = session.latestX >= bounds.left && session.latestX <= bounds.right &&
+      session.latestY >= bounds.top && session.latestY <= bounds.bottom;
+    const target = inside
+      ? gridTargetFromPointer(session.latestX, session.latestY, geometry, session.anchor)
+      : null;
+    const withinGrid = target !== null && target.column >= 0 && target.row >= 0 &&
+      target.column + footprint.columns <= BUILD_GRID_COLUMNS &&
+      target.row + footprint.rows <= BUILD_GRID_ROWS;
+    session.target = withinGrid ? target : null;
+    session.targetFits = Boolean(session.target && showDragPreview(session.target.column, session.target.row));
+    if (!session.target) hideDragPreview();
+    session.ghost.classList.toggle('is-valid', session.targetFits);
+    session.ghost.classList.toggle('is-invalid', !session.targetFits);
+  };
+  const schedulePointerDrag = (): void => {
+    if (!pointerDrag || pointerDrag.frame !== null) return;
+    pointerDrag.frame = requestAnimationFrame(updatePointerDrag);
+  };
+  const clearPointerDrag = (): void => {
+    const session = pointerDrag;
+    if (!session) return;
+    if (session.frame !== null) cancelAnimationFrame(session.frame);
+    session.source.classList.remove('is-dragging');
+    session.ghost?.remove();
+    hideDragPreview();
+    dragging = null;
+    pointerDrag = null;
+  };
+  const finishPointerDrag = (pointerId: number, commit: boolean): void => {
+    const session = pointerDrag;
+    if (!session || session.pointerId !== pointerId) return;
+    if (session.active) {
+      if (session.frame !== null) cancelAnimationFrame(session.frame);
+      updatePointerDrag();
+      suppressedClicks.add(session.source);
+    }
+    const target = session.target;
+    const fits = session.targetFits;
+    const descriptor = { kind: session.kind, placementId: session.placementId };
+    clearPointerDrag();
+    if (!commit || !session.active) return;
+    if (!target || !fits) {
+      refreshSelection(`${partName(descriptor.kind)} no cabe ahí o está fuera de la combi.`);
+      return;
+    }
+    if (descriptor.placementId) moveTo(descriptor.placementId, target.column, target.row);
+    else placeAt(descriptor.kind, target.column, target.row);
+  };
+  const attachPointerDrag = (source: HTMLButtonElement, kind: PartKind,
+    placementId?: string): void => {
+    source.draggable = false;
+    source.addEventListener('click', (event) => {
+      if (!suppressedClicks.delete(source)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, { capture: true });
+    source.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const geometry = readGridGeometry();
+      if (!geometry) return;
+      const footprint = PART_FOOTPRINTS[kind];
+      const sourceRect = source.getBoundingClientRect();
+      const anchor = placementId
+        ? dragAnchorFromElement(event.clientX, event.clientY, sourceRect.left, sourceRect.top,
+          geometry.columnStep, geometry.rowStep)
+        : { columnOffset: footprint.columns / 2, rowOffset: footprint.rows / 2 };
+      clearPointerDrag();
+      dragging = placementId ? { kind, placementId } : { kind };
+      pointerDrag = {
+        pointerId: event.pointerId,
+        source,
+        kind,
+        ...(placementId ? { placementId } : {}),
+        anchor,
+        startX: event.clientX,
+        startY: event.clientY,
+        latestX: event.clientX,
+        latestY: event.clientY,
+        active: false,
+        frame: null,
+        ghost: null,
+        target: null,
+        targetFits: false,
+      };
+      source.setPointerCapture(event.pointerId);
+    });
+    source.addEventListener('pointermove', (event) => {
+      const session = pointerDrag;
+      if (!session || session.pointerId !== event.pointerId || session.source !== source) return;
+      session.latestX = event.clientX;
+      session.latestY = event.clientY;
+      if (!session.active && Math.hypot(event.clientX - session.startX,
+        event.clientY - session.startY) >= 3) {
+        session.active = true;
+        source.classList.add('is-dragging');
+      }
+      if (session.active) {
+        event.preventDefault();
+        schedulePointerDrag();
+      }
+    });
+    source.addEventListener('pointerup', (event) => finishPointerDrag(event.pointerId, true));
+    source.addEventListener('pointercancel', (event) => finishPointerDrag(event.pointerId, false));
+    source.addEventListener('lostpointercapture', (event) => finishPointerDrag(event.pointerId, false));
+  };
+
   for (let row = 0; row < BUILD_GRID_ROWS; row += 1) {
     for (let column = 0; column < BUILD_GRID_COLUMNS; column += 1) {
       const cell = actionButton('', 'construction-cell', () => {
@@ -382,21 +553,6 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       cell.style.gridColumn = String(column + 1);
       cell.style.gridRow = String(row + 1);
       cell.setAttribute('aria-label', `Celda columna ${column + 1}, fila ${row + 1}`);
-      cell.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        showDragPreview(column, row);
-      });
-      cell.addEventListener('drop', (event) => {
-        event.preventDefault();
-        hideDragPreview();
-        const placementId = event.dataTransfer?.getData('application/x-tunea-placement');
-        if (placementId) {
-          moveTo(placementId, column, row);
-          return;
-        }
-        const dragged = event.dataTransfer?.getData('application/x-tunea-part') as PartKind | undefined;
-        if (dragged) placeAt(dragged, column, row);
-      });
       cellButtons.push(cell);
       constructionGrid.append(cell);
     }
@@ -421,43 +577,16 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       : `Retirar ${partName(placement.kind)} de columna ${placement.column + 1}, fila ${placement.row + 1}`);
     button.title = isDriverSeat ? 'Conductor: se puede mover, no guardar'
       : secured ? 'Conectada al chasis' : 'Suelta: se caerá al iniciar';
-    button.draggable = true;
     button.append(
       textElement('span', 'grid-piece-icon', partIcon(placement.kind)),
       ...(isDriverSeat ? [textElement('span', 'grid-driver-person', '')] : []),
       textElement('span', 'grid-piece-name', shortPartName(placement.kind)),
       textElement('span', 'grid-piece-state', isDriverSeat ? 'CONDUCTOR' : secured ? 'CONECTADA' : 'SUELTA'),
     );
-    button.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-      showDragPreview(placement.column, placement.row);
-    });
-    button.addEventListener('drop', (event) => {
-      event.preventDefault();
-      hideDragPreview();
-      if (!dragging) return;
-      if (dragging.placementId) moveTo(dragging.placementId, placement.column, placement.row);
-      else placeAt(dragging.kind, placement.column, placement.row);
-    });
-    button.addEventListener('dragstart', (event) => {
-      button.classList.add('is-dragging');
-      dragging = { kind: placement.kind, placementId: placement.id };
-      event.dataTransfer?.setData('application/x-tunea-placement', placement.id);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    });
-    button.addEventListener('dragend', () => {
-      button.classList.remove('is-dragging');
-      dragging = null;
-      hideDragPreview();
-    });
+    attachPointerDrag(button, placement.kind, placement.id);
     constructionGrid.append(button);
   }
   constructionGrid.append(dragPreview);
-  constructionGrid.addEventListener('dragleave', (event) => {
-    const destination = event.relatedTarget;
-    if (!(destination instanceof Node) || !constructionGrid.contains(destination)) hideDragPreview();
-  });
   vehicleSection.append(selectionMessage, constructionGrid,
     textElement('p', 'grid-legend', 'FIJA    SUELTA'));
 
@@ -490,7 +619,6 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     });
     button.dataset.partKind = part.kind;
     button.disabled = available < 1 && snapshot.game.wallet < part.price;
-    button.draggable = available > 0;
     button.setAttribute('aria-pressed', 'false');
     button.setAttribute('aria-label', available > 0
       ? `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`
@@ -501,19 +629,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       textElement('span', `part-card-count ${available > 0 ? '' : 'is-price'}`,
         available > 0 ? `x${available}` : `S/ ${part.price}`),
     );
-    button.addEventListener('dragstart', (event) => {
-      button.classList.add('is-dragging');
-      dragging = { kind: part.kind };
-      event.dataTransfer?.setData('application/x-tunea-part', part.kind);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
-      workshopUi.selectedPart = part.kind;
-      refreshSelection();
-    });
-    button.addEventListener('dragend', () => {
-      button.classList.remove('is-dragging');
-      dragging = null;
-      hideDragPreview();
-    });
+    if (available > 0) attachPointerDrag(button, part.kind);
     inventoryButtons.push(button);
     card.append(button);
     if (canSell) {

@@ -1,6 +1,6 @@
 import { AppController } from './app/appController';
 import { FixedStepClock } from './core/fixedStepClock';
-import { STOP_RADIUS_METERS } from './game/rideSession';
+import { hasReachedDestination, STOP_RADIUS_METERS } from './game/rideSession';
 import { LocalSaveRepository } from './persistence/saveRepository';
 import { createCanvasRenderer } from './rendering/canvasRenderer';
 import './styles.css';
@@ -58,7 +58,7 @@ window.addEventListener('keydown', (event) => {
       event.preventDefault();
       const readyToDeliver = snapshot.ride?.requests.some((progress) =>
         progress.status === 'onboard' &&
-        Math.abs(snapshot.vehicleX - progress.request.destinationX) <= STOP_RADIUS_METERS);
+        hasReachedDestination(snapshot.vehicleX, progress.request.destinationX));
       if (readyToDeliver) controller.dispatch({ type: 'DELIVER_REQUEST' });
       else {
         const readyToCollect = snapshot.ride?.requests.find((progress) =>
