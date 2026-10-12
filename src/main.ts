@@ -42,10 +42,11 @@ window.addEventListener('keydown', (event) => {
     } else if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') {
       event.preventDefault();
       controller.dispatch({ type: 'SET_THROTTLE', value: -1 });
-    } else if (event.key === ' ') {
-      event.preventDefault();
-      controller.dispatch({ type: 'SET_BRAKE', value: true });
     } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (event.repeat) return;
+      controller.dispatch({ type: 'SET_BRAKE', value: true });
+    } else if (event.key === ' ') {
       event.preventDefault();
       if (event.repeat) return;
       const readyToCollect = snapshot.ride?.requests.find((progress) =>
@@ -75,7 +76,7 @@ window.addEventListener('keyup', (event) => {
     event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') {
     controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
   }
-  if (event.key === ' ') controller.dispatch({ type: 'SET_BRAKE', value: false });
+  if (event.key === 'ArrowDown') controller.dispatch({ type: 'SET_BRAKE', value: false });
 });
 
 window.addEventListener('blur', () => {

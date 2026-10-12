@@ -7,9 +7,9 @@ const artifactUrl = pathToFileURL(resolve(import.meta.dirname, '../../dist/index
 async function engageControlledBrake(page: Page, targetPercent: 50 | 100): Promise<void> {
   const indicator = page.locator('[data-ui="brake-effectiveness"]');
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.keyboard.down(' ');
+    await page.keyboard.down('ArrowDown');
     if (await indicator.innerText() === `FRENO ${targetPercent} %`) return;
-    await page.keyboard.up(' ');
+    await page.keyboard.up('ArrowDown');
   }
   throw new Error(`El freno no recorrió el nivel de ${targetPercent} %.`);
 }
@@ -28,10 +28,10 @@ async function pickupStoppedRequest(page: Page, requestId: string, originX: numb
       await expect.poll(async () => Math.abs(Number.parseFloat(
         await page.locator('[data-ui="speed"]').innerText())),
       { timeout: 4_000 }).toBeLessThanOrEqual(0.05);
-      await page.keyboard.up(' ');
+      await page.keyboard.up('ArrowDown');
       continue;
     }
-    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Space');
     const onboard = JSON.parse(await canvas.getAttribute('data-onboard-request-ids') ?? '[]') as string[];
     if (onboard.includes(requestId)) return;
     const vehicleX = Number(await canvas.getAttribute('data-vehicle-x'));
@@ -58,7 +58,7 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await engageControlledBrake(page, 100);
   await expect.poll(async () => Math.abs(Number.parseFloat(
     await page.locator('[data-ui="speed"]').innerText())), { timeout: 8_000 }).toBeLessThanOrEqual(0.05);
-  await page.keyboard.up(' ');
+  await page.keyboard.up('ArrowDown');
   await pickupStoppedRequest(page, requestId, originX);
   const routePosition = await page.locator('canvas').evaluate((canvas) => ({
     vehicleX: Number((canvas as HTMLElement).dataset.vehicleX),
@@ -79,6 +79,10 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   expect(fareLabel).toBe(targetRequest?.kind === 'passenger'
     ? `+S/ ${fareNotice?.total}`
     : `S/ ${fareNotice?.baseFare} + S/ 2 = +S/ ${fareNotice?.total}`);
+  const fareReward = page.locator('[data-ui="fare-reward"]');
+  await expect(fareReward).toBeVisible();
+  await expect(fareReward.locator('[data-ui="fare-reward-value"]')).toHaveText(fareLabel ?? '');
+  await expect(fareReward.locator('img')).toHaveCount(2);
   await page.keyboard.down('d');
 }
 
@@ -209,8 +213,10 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await assembleVehicle(page);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
+  await expect(page.locator('.topbar')).toBeHidden();
   await expect(page.getByRole('meter', { name: 'Esfuerzo del motor' })).toBeVisible();
   await expect(page.locator('[data-ui="brake-effectiveness"]')).toHaveText('FRENO 0 %');
+  await expect(page.getByRole('button', { name: 'Recoger pasajero o carga' })).toBeVisible();
   const accelerate = page.getByRole('button', { name: 'Acelerar' });
   await accelerate.dispatchEvent('pointerdown', { pointerType: 'touch', button: 0 });
   await expect.poll(async () => Number.parseFloat(await page.locator('[data-ui="position"]').innerText()))
@@ -221,6 +227,7 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await accelerate.dispatchEvent('pointerup', { pointerType: 'touch', button: 0 });
   await page.getByRole('button', { name: 'Pausa' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PAUSED');
+  await expect(page.getByText('Primer recorrido', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   page.once('dialog', async (dialog) => dialog.accept());

@@ -1,4 +1,5 @@
 import type { AppAction, AppSnapshot } from '../app/appController';
+import moneyRewardUrl from '../assets/money-reward.png';
 import type { Disposable } from '../core/contracts';
 import { LEVELS } from '../data/levels';
 import { PART_CATALOG, type PartKind } from '../data/parts';
@@ -16,7 +17,7 @@ import {
   validateGridBuild,
   type GridPlacement,
 } from '../game/model';
-import { hasReachedDestination } from '../game/rideSession';
+import { hasReachedDestination, STOP_RADIUS_METERS } from '../game/rideSession';
 import {
   dragAnchorFromElement,
   gridTargetFromPointer,
@@ -115,7 +116,7 @@ function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => vo
     case 'LEVEL_SELECT': return createLevelSelectScreen(snapshot, dispatch);
     case 'WORKSHOP': return createWorkshopScreen(snapshot, dispatch, workshopUi);
     case 'PLAYING': return createPlayingScreen(snapshot, dispatch);
-    case 'PAUSED': return createPausedScreen(dispatch);
+    case 'PAUSED': return createPausedScreen(snapshot, dispatch);
     case 'RESULTS': return createResultsScreen(snapshot, dispatch);
   }
 }
@@ -720,6 +721,22 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   );
   panel.append(hud, engineLoad);
 
+  const fareNotice = document.createElement('div');
+  fareNotice.className = 'fare-reward';
+  fareNotice.dataset.ui = 'fare-reward';
+  fareNotice.hidden = true;
+  fareNotice.setAttribute('role', 'status');
+  fareNotice.setAttribute('aria-live', 'polite');
+  const leftMoney = document.createElement('img');
+  leftMoney.src = moneyRewardUrl;
+  leftMoney.alt = '';
+  leftMoney.setAttribute('aria-hidden', 'true');
+  const fareText = textElement('strong', 'fare-reward-value', '');
+  fareText.dataset.ui = 'fare-reward-value';
+  const rightMoney = leftMoney.cloneNode(true) as HTMLImageElement;
+  fareNotice.append(leftMoney, fareText, rightMoney);
+  panel.append(fareNotice);
+
   const delivery = actionButton('Entregar carga', 'small-action', () =>
     dispatch({ type: 'DELIVER_REQUEST' }));
   delivery.dataset.ui = 'deliver';
@@ -728,7 +745,8 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
   panel.append(delivery, message,
-    textElement('p', 'pickup-key-hint', 'ABAJO RECOGER'), createDriveControls(dispatch), pause);
+    textElement('p', 'pickup-key-hint', 'ESPACIO RECOGER - ABAJO FRENAR'),
+    createDriveControls(dispatch), pause);
   return panel;
 }
 
@@ -767,6 +785,13 @@ function createDriveControls(dispatch: (action: AppAction) => void): HTMLElement
     controls.addEventListener('contextmenu', (event) => event.preventDefault());
     return button;
   };
+  const pickup = actionButton('SUBIR', 'drive-control pickup-control', () => {
+    const requestId = pickup.dataset.requestId;
+    if (requestId) dispatch({ type: 'COLLECT_REQUEST', requestId });
+  });
+  pickup.dataset.ui = 'pickup';
+  pickup.disabled = true;
+  pickup.setAttribute('aria-label', 'Recoger pasajero o carga');
   controls.append(
     holdButton('Reversa', 'reverse-control',
       () => dispatch({ type: 'SET_THROTTLE', value: -1 }),
@@ -774,6 +799,7 @@ function createDriveControls(dispatch: (action: AppAction) => void): HTMLElement
     holdButton('Frenar', 'brake-control',
       () => dispatch({ type: 'SET_BRAKE', value: true }),
       () => dispatch({ type: 'SET_BRAKE', value: false })),
+    pickup,
     holdButton('Acelerar', 'accelerate-control',
       () => dispatch({ type: 'SET_THROTTLE', value: 1 }),
       () => dispatch({ type: 'SET_THROTTLE', value: 0 })),
@@ -809,8 +835,39 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
     timeCard.style.setProperty('--time-progress', `${progress * 360}deg`);
     timeCard.classList.toggle('is-urgent', ride.remainingSeconds <= 10);
   }
-  const message = screen.querySelector<HTMLElement>('[role="status"]');
+  const message = screen.querySelector<HTMLElement>('.ride-toast');
   if (message) message.textContent = snapshot.message;
+  const fareReward = screen.querySelector<HTMLElement>('[data-ui="fare-reward"]');
+  const fareRewardValue = screen.querySelector<HTMLElement>('[data-ui="fare-reward-value"]');
+  if (fareReward && fareRewardValue) {
+    const fare = snapshot.fareNotice;
+    const fareKey = fare ? `${fare.baseFare}-${fare.surcharge}-${fare.total}` : '';
+    if (!fare) {
+      fareReward.hidden = true;
+      fareReward.classList.remove('is-visible');
+      fareReward.dataset.fareKey = '';
+    } else {
+      fareRewardValue.textContent = fare.surcharge > 0
+        ? `S/ ${fare.baseFare} + S/ ${fare.surcharge} = +S/ ${fare.total}`
+        : `+S/ ${fare.total}`;
+      fareReward.hidden = false;
+      if (fareReward.dataset.fareKey !== fareKey) {
+        fareReward.dataset.fareKey = fareKey;
+        fareReward.classList.remove('is-visible');
+        void fareReward.offsetWidth;
+        fareReward.classList.add('is-visible');
+      }
+    }
+  }
+  const pickup = screen.querySelector<HTMLButtonElement>('[data-ui="pickup"]');
+  if (pickup) {
+    const readyToCollect = ride.requests.find((progress) => progress.status === 'waiting' &&
+      Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS);
+    pickup.disabled = !readyToCollect;
+    pickup.dataset.requestId = readyToCollect?.request.id ?? '';
+    pickup.classList.toggle('is-ready', Boolean(readyToCollect));
+    pickup.textContent = readyToCollect ? 'SUBIR' : 'RECOGER';
+  }
   const delivery = screen.querySelector<HTMLButtonElement>('[data-ui="deliver"]');
   if (delivery) {
     const onboard = ride.requests.find((item) =>
@@ -824,11 +881,14 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   }
 }
 
-function createPausedScreen(dispatch: (action: AppAction) => void): HTMLElement {
+function createPausedScreen(snapshot: AppSnapshot,
+  dispatch: (action: AppAction) => void): HTMLElement {
   const panel = panelElement('pause-panel');
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   panel.append(
     textElement('p', 'eyebrow', 'Tiempo detenido'),
     textElement('h1', 'section-title', 'En pausa'),
+    textElement('p', 'pause-level-name', level?.name ?? 'Recorrido'),
     actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
     actionButton('Reiniciar intento', 'secondary-action', () => {
       if (window.confirm('¿Reiniciar este intento desde el inicio?')) dispatch({ type: 'RESTART_RIDE' });

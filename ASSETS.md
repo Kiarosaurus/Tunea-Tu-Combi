@@ -2,15 +2,20 @@
 
 ## Estado actual
 
-El proyecto no utiliza imágenes, fuentes, audio ni modelos externos. La vista
-provisional de Lima y la combi se dibujan con primitivas de Canvas 2D en
-`src/rendering/canvasRenderer.ts`. Todo el resultado queda embebido en el HTML.
+El proyecto utiliza un único PNG local para la recompensa monetaria. La vista
+de Lima, la combi y el resto de la interfaz se dibujan con primitivas de Canvas
+2D y CSS. Todo el resultado queda embebido en el HTML.
 
 ## Autoría y licencia
 
 Los gráficos procedurales y estilos de esta versión fueron creados para Tunea
 Tu Combi y forman parte del código del proyecto. No incorporan marcas, personajes
 ni recursos de terceros.
+
+## Inventario
+
+- `src/assets/money-reward.png`: 384 x 256 px, transparencia alfa, anclaje
+  central. Grupo cartoon de monedas y billete creado para el aviso de cobro.
 
 ## Contrato para arte futuro
 

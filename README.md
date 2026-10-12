@@ -117,8 +117,8 @@ parrilla, portacarga y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
-`Espacio` frena y cada nueva pulsación recorre 25 %, 50 %, 75 % y 100 % de
-efectividad. La flecha abajo recoge la solicitud cercana. Recoger exige detenerse
+y la flecha abajo frena; cada nueva pulsación recorre 25 %, 50 %, 75 % y 100 %
+de efectividad. `Espacio` recoge la solicitud cercana. Recoger exige detenerse
 casi por completo. Los pasajeros aparecen junto a la pista y también se recogen haciendo clic
 directamente sobre ellos; al llegar a su parada bajan automáticamente y liberan
 el asiento. `E` se conserva como alternativa de teclado y para las cargas.

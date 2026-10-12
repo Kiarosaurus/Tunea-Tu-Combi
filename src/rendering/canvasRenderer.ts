@@ -163,7 +163,6 @@ function draw(
   drawPoliceBarrier(context, width, height, snapshot, world);
   if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot, world);
   drawCombi(context, width, height, snapshot, world);
-  drawFareNotice(context, width, height, snapshot, world);
   const requestHitAreas = drawWaitingRequests(context, width, height, snapshot, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
   return requestHitAreas;
@@ -216,7 +215,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   const left = width >= 760 ? Math.max(400, width * 0.43) : 16;
   const right = width - (width >= 760 ? 34 : 16);
   const boardWidth = Math.max(360, right - left);
-  const top = 82;
+  const top = width >= 760 ? 22 : 88;
   const lineLeft = left + 34;
   const lineRight = right - 34;
   const lineY = top + 61;
@@ -630,26 +629,6 @@ function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: 
     context.arc(baseX - phase - index * 11, baseY - (index % 3) * 7, radius, 0, Math.PI * 2);
     context.fill();
   }
-  context.restore();
-}
-
-function drawFareNotice(context: CanvasRenderingContext2D, width: number, height: number,
-  snapshot: AppSnapshot, world: WorldSnapshot): void {
-  if (!snapshot.fareNotice || snapshot.fareNotice.total <= 0) return;
-  const point = worldToScreen(world.body.position, world, width, height);
-  const label = formatFareNotice(snapshot.fareNotice);
-  context.save();
-  context.font = '900 15px system-ui';
-  const labelWidth = context.measureText(label).width + 24;
-  context.fillStyle = 'rgba(5, 20, 31, 0.92)';
-  roundedRect(context, point.x - labelWidth / 2, point.y - 122, labelWidth, 32, 10);
-  context.fill();
-  context.strokeStyle = '#f2c14e';
-  context.lineWidth = 2;
-  context.stroke();
-  context.fillStyle = '#fff5d9';
-  context.textAlign = 'center';
-  context.fillText(label, point.x, point.y - 101);
   context.restore();
 }
 
@@ -1142,7 +1121,7 @@ function drawDebug(
 }
 
 function worldScale(width: number, height: number): number {
-  return Math.min(width / 15, height / 9, 95);
+  return Math.min(width / 11.8, height / 7.2, 118);
 }
 
 function worldToScreen(
