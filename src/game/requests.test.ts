@@ -19,13 +19,13 @@ describe('generación de solicitudes', () => {
 
   it('incluye pasajeros y una carga con masa, capacidad y tarifa positivas', () => {
     const requests = generateLevelOneRequests('primer-recorrido-base');
-    expect(requests.filter((request) => request.kind === 'passenger')).toHaveLength(4);
-    expect(requests).toHaveLength(6);
+    expect(requests.filter((request) => request.kind === 'passenger')).toHaveLength(5);
+    expect(requests).toHaveLength(7);
     expect(requests.some((request) => request.kind !== 'passenger')).toBe(true);
     for (const request of requests) {
       expect(request.massKg).toBeGreaterThan(0);
       expect(request.requiredCapacity).toBeGreaterThan(0);
-      expect(requestFare(request)).toBeGreaterThanOrEqual(1);
+      expect(requestFare(request)).toBeGreaterThanOrEqual(0);
       expect(requestFare(request)).toBeLessThanOrEqual(5);
       expect(request.attendantVariant).toBeTruthy();
       if (request.kind !== 'passenger') {
@@ -65,6 +65,12 @@ describe('generación de solicitudes', () => {
   it('ubica cada bajada dentro del tramo indicado por el mapa en los cinco niveles', () => {
     for (const level of LEVELS) {
       for (const request of generateRequests(level.id, level.seed)) {
+        if (!request.servedByRoute) {
+          expect(request.destinationX).toBeGreaterThan(request.originX);
+          expect(request.destinationX).toBeLessThan(level.finishX);
+          expect(requestFare(request)).toBe(0);
+          continue;
+        }
         const segment = routeSegmentForStop(request.destinationStop, level.finishX);
         expect(request.destinationX, `${level.id}/${request.id} baja antes de ${request.destinationStop}`)
           .toBeGreaterThanOrEqual(segment.startX);
@@ -72,6 +78,20 @@ describe('generación de solicitudes', () => {
           .toBeLessThanOrEqual(segment.endX);
         expect(request.destinationX).toBeGreaterThan(request.originX);
       }
+    }
+  });
+
+  it('incluye un pasajero fuera de ruta reproducible y sin pago en cada nivel', () => {
+    for (const level of LEVELS) {
+      const first = generateRequests(level.id, level.seed)
+        .filter((request) => !request.servedByRoute);
+      const second = generateRequests(level.id, level.seed)
+        .filter((request) => !request.servedByRoute);
+      expect(first).toHaveLength(1);
+      expect(second).toEqual(first);
+      const request = first[0];
+      expect(request?.kind).toBe('passenger');
+      if (request) expect(requestFare(request)).toBe(0);
     }
   });
 

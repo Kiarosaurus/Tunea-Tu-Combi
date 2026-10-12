@@ -43,8 +43,9 @@ async function pickupStoppedRequest(page: Page, requestId: string, originX: numb
 async function clickRequestOnRoute(page: Page, requestId: string): Promise<void> {
   const canvas = page.locator('canvas');
   const waiting = JSON.parse(await canvas.getAttribute('data-waiting-requests') ?? '[]') as
-    { id: string; originX: number }[];
-  const originX = waiting.find((request) => request.id === requestId)?.originX ?? Number.NaN;
+    { id: string; originX: number; destinationStop: string; markerColor: string }[];
+  const targetRequest = waiting.find((request) => request.id === requestId);
+  const originX = targetRequest?.originX ?? Number.NaN;
   expect(originX, `${requestId} debe seguir esperando en la ruta.`).toBeGreaterThan(0);
   await expect.poll(async () => {
     const vehicleX = Number(await canvas.getAttribute('data-vehicle-x'));
@@ -60,12 +61,15 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await pickupStoppedRequest(page, requestId, originX);
   const routePosition = await page.locator('canvas').evaluate((canvas) => ({
     vehicleX: Number((canvas as HTMLElement).dataset.vehicleX),
-    destinationX: Number((canvas as HTMLElement).dataset.onboardDestinationX),
-    remaining: Number((canvas as HTMLElement).dataset.distanceToDestination),
   }));
-  expect(routePosition.destinationX).toBeGreaterThan(routePosition.vehicleX);
-  expect(routePosition.remaining).toBeCloseTo(
-    routePosition.destinationX - routePosition.vehicleX, 2);
+  const marker = (JSON.parse(await canvas.getAttribute('data-onboard-markers') ?? '[]') as
+    { id: string; color: string; destinationX: number; destinationStop: string;
+      remainingMeters: number }[]).find((item) => item.id === requestId);
+  expect(marker?.destinationX).toBeGreaterThan(routePosition.vehicleX);
+  expect(marker?.remainingMeters).toBeCloseTo(
+    (marker?.destinationX ?? 0) - routePosition.vehicleX, 2);
+  expect(marker?.destinationStop).toBe(targetRequest?.destinationStop);
+  expect(marker?.color).toBe(targetRequest?.markerColor);
   await page.keyboard.down('d');
 }
 
@@ -172,6 +176,12 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
   await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
+  const waitingRequests = JSON.parse(await page.locator('canvas')
+    .getAttribute('data-waiting-requests') ?? '[]') as
+    { destinationStop: string; servedByRoute: boolean }[];
+  expect(waitingRequests).toContainEqual(expect.objectContaining({
+    destinationStop: 'Gamarra', servedByRoute: false,
+  }));
   await expect.poll(async () => Number(await page.locator('canvas').getAttribute('data-engine-health')),
     { timeout: 5_000 }).toBeLessThanOrEqual(75);
 

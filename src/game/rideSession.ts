@@ -24,6 +24,8 @@ export interface RequestProgress {
 export interface CompletedDelivery {
   readonly requestId: string;
   readonly fare: number;
+  readonly destinationStop: string;
+  readonly servedByRoute: boolean;
 }
 
 export interface RideSnapshot {
@@ -140,6 +142,8 @@ export class RideSession {
     return arrived.map((progress) => ({
       requestId: progress.request.id,
       fare: this.#completeDelivery(progress.request),
+      destinationStop: progress.request.destinationStop,
+      servedByRoute: progress.request.servedByRoute,
     }));
   }
 
@@ -160,7 +164,7 @@ export class RideSession {
     const fare = requestFare(request);
     this.#setStatus(request.id, 'delivered');
     this.#deliveredRevenue += fare;
-    this.#deliveredCount += 1;
+    if (request.servedByRoute) this.#deliveredCount += 1;
     return fare;
   }
 }

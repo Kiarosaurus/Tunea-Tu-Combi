@@ -17,6 +17,7 @@ export interface RideRequest {
   readonly visualVariant: string;
   readonly attendantVariant: string;
   readonly cargoMassKg: number;
+  readonly servedByRoute: boolean;
 }
 
 const PEOPLE_VARIANTS = ['azul', 'rojo', 'verde', 'amarillo'] as const;
@@ -38,6 +39,9 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     kind: Exclude<RequestKind, 'passenger'>): RideRequest => cargoRequestForRoute(
     id, originStop, destinationStop, originX,
     dropoffXForStop(destinationStop, level.finishX, random()), kind, random);
+  const wrongRoute = (id: string, originStop: string, destinationStop: string,
+    originX: number): RideRequest => offRoutePassengerRequest(id, originStop, destinationStop,
+      originX, offRouteExitX(originX, level.finishX, random()), random);
   if (levelId === 'subida-al-cerro') return [
     passenger('cerro-uno-a', 'Collique', 'Vista Alegre', 4),
     passenger('cerro-uno-b', 'Collique', 'Hospital Collique', 7),
@@ -47,6 +51,7 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     passenger('cerro-tres-b', 'Universitaria', 'Naranjal', 57),
     passenger('cerro-cuatro-a', 'Trapiche', 'Canta Callao', 80),
     passenger('cerro-cuatro-b', 'Trapiche', 'Naranjal', 83),
+    wrongRoute('cerro-fuera-ruta', 'Hospital Collique', 'Gamarra', 44),
   ];
   if (levelId === 'dia-de-mercado') return [
     passenger('mercado-uno-a', 'Collique', 'Próceres', 4),
@@ -57,6 +62,7 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     passenger('mercado-tres-b', 'Universitaria', 'Canta Callao', 58),
     cargo('mercado-cuatro-a', 'Trapiche', 'Naranjal', 81, 'scooter'),
     passenger('mercado-cuatro-b', 'Trapiche', 'Canta Callao', 84),
+    wrongRoute('mercado-fuera-ruta', 'Hospital Collique', 'Chorrillos', 46),
   ];
   if (levelId === 'pista-danada') return [
     passenger('pista-uno-a', 'Collique', 'Próceres', 4),
@@ -67,6 +73,7 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     cargo('pista-tres-b', 'Universitaria', 'Canta Callao', 62, 'scooter'),
     cargo('pista-cuatro-a', 'Trapiche', 'Naranjal', 86, 'scooter'),
     passenger('pista-cuatro-b', 'Trapiche', 'Canta Callao', 89),
+    wrongRoute('pista-fuera-ruta', 'Hospital Collique', 'Javier Prado', 48),
   ];
   if (levelId === 'hora-punta') return [
     passenger('punta-uno-a', 'Collique', 'Próceres', 3),
@@ -79,6 +86,7 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     passenger('punta-cuatro-b', 'Universitaria', 'Trapiche', 76),
     passenger('punta-cinco-a', 'Trapiche', 'Naranjal', 98),
     cargo('punta-cinco-b', 'Trapiche', 'Canta Callao', 101, 'roofCargo'),
+    wrongRoute('punta-fuera-ruta', 'Hospital Collique', 'Miraflores', 64),
   ];
   return [
     passenger('primer-pasajero', 'Collique', 'Próceres', 8),
@@ -88,10 +96,12 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
     passenger('tercer-pasajero', 'Universitaria', 'Trapiche', 58),
     cargo('carga-terminal', 'Universitaria', 'Canta Callao', 61,
       random() < 0.5 ? 'roofCargo' : 'scooter'),
+    wrongRoute('pasajero-fuera-ruta', 'Hospital Collique', 'Gamarra', 45),
   ];
 }
 
 export function requestFare(request: RideRequest): number {
+  if (!request.servedByRoute) return 0;
   return request.baseFare + request.distanceFare;
 }
 
@@ -115,6 +125,30 @@ function passengerRequest(
     visualVariant,
     attendantVariant: visualVariant,
     cargoMassKg: 0,
+    servedByRoute: true,
+  };
+}
+
+function offRoutePassengerRequest(
+  id: string,
+  originStop: string,
+  destinationStop: string,
+  originX: number,
+  destinationX: number,
+  random: () => number,
+): RideRequest {
+  const visualVariant = pick(PEOPLE_VARIANTS, random);
+  return {
+    id, originStop, destinationStop, originX, destinationX,
+    kind: 'passenger',
+    massKg: 58 + Math.floor(random() * 20),
+    requiredCapacity: 1,
+    baseFare: 0,
+    distanceFare: 0,
+    visualVariant,
+    attendantVariant: visualVariant,
+    cargoMassKg: 0,
+    servedByRoute: false,
   };
 }
 
@@ -140,7 +174,13 @@ function cargoRequestForRoute(
     visualVariant: pick(CARGO_VARIANTS, random),
     attendantVariant: pick(PEOPLE_VARIANTS, random),
     cargoMassKg,
+    servedByRoute: true,
   };
+}
+
+function offRouteExitX(originX: number, finishX: number, randomValue: number): number {
+  const remainingDistance = finishX - originX;
+  return originX + remainingDistance * (0.3 + randomValue * 0.45);
 }
 
 function fareForRoute(originX: number, destinationX: number): number {

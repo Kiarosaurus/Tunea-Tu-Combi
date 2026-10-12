@@ -98,7 +98,12 @@ describe('primer recorrido', () => {
     ride.collect('primer-pasajero', 8, 0, oneSeat);
     expect(ride.deliverArrived(8)).toEqual([]);
     expect(ride.deliverArrived(request.destinationX)).toEqual([
-      { requestId: 'primer-pasajero', fare: requestFare(request) },
+      {
+        requestId: 'primer-pasajero',
+        fare: requestFare(request),
+        destinationStop: request.destinationStop,
+        servedByRoute: true,
+      },
     ]);
     expect(ride.snapshot.requests.find((item) => item.request.id === 'primer-pasajero')?.status)
       .toBe('delivered');
@@ -115,10 +120,31 @@ describe('primer recorrido', () => {
           `${level.id}/${request.id} se entregó antes del destino`).toEqual([]);
         expect(ride.deliverArrived(request.destinationX),
           `${level.id}/${request.id} no se entregó al llegar`).toEqual([
-          { requestId: request.id, fare: requestFare(request) },
+          {
+            requestId: request.id,
+            fare: requestFare(request),
+            destinationStop: request.destinationStop,
+            servedByRoute: request.servedByRoute,
+          },
         ]);
       }
     }
+  });
+
+  it('libera sin pago al pasajero cuyo destino no pertenece a la ruta', () => {
+    const ride = new RideSession();
+    const request = ride.snapshot.requests.find((item) => !item.request.servedByRoute)?.request;
+    expect(request).toBeDefined();
+    if (!request) return;
+    ride.collect(request.id, request.originX, 0, oneSeat);
+    expect(ride.deliverArrived(request.destinationX)).toEqual([{
+      requestId: request.id,
+      fare: 0,
+      destinationStop: 'Gamarra',
+      servedByRoute: false,
+    }]);
+    expect(ride.snapshot.deliveredRevenue).toBe(0);
+    expect(ride.snapshot.deliveredCount).toBe(0);
   });
 
   it('fallar no acredita ingreso provisional ni desbloquea', () => {

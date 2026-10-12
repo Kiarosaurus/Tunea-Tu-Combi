@@ -241,8 +241,13 @@ export class AppController {
         const arrivals = this.#ride.deliverArrived(world.body.position.x);
         for (const arrival of arrivals) this.#detachRequestPayload(arrival.requestId);
         if (arrivals.length > 0) {
-          const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
-          this.#message = `Pasajero en destino: S/ ${totalFare}. Asiento libre.`;
+          const wrongRoute = arrivals.find((arrival) => !arrival.servedByRoute);
+          if (wrongRoute) {
+            this.#message = `Te dije ${wrongRoute.destinationStop}. Esta combi no va. No te pago.`;
+          } else {
+            const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
+            this.#message = `Pasajero en destino: S/ ${totalFare}. Asiento libre.`;
+          }
         }
         this.#ride.advance(durationSeconds, world.body.position.x, world.body.angleRadians,
           world.joints.filter((joint) => joint.broken).length);
@@ -506,7 +511,7 @@ export class AppController {
       }
     }
     this.#message = request?.kind === 'passenger'
-      ? 'Pasajero a bordo. Llévalo a su destino.'
+      ? `Pasajero: "Voy a ${request.destinationStop}".`
       : 'Carga asegurada. Llévala a su destino.';
     this.#notify();
   }

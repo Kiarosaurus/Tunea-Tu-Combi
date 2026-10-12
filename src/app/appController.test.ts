@@ -159,6 +159,45 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.engineHealthPercent).toBeGreaterThan(85);
   });
 
+  it('avisa el destino pedido y no paga al pasajero que subió a la ruta equivocada', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    enterWorkshop(controller);
+    addPassengerSeat(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    const request = controller.snapshot.ride?.requests.find((item) =>
+      item.request.id === 'pasajero-fuera-ruta')?.request;
+    expect(request).toBeDefined();
+    if (!request) return;
+    let collected = false;
+    for (let index = 0; index < 3600 && !collected; index += 1) {
+      const distance = request.originX - controller.snapshot.vehicleX;
+      const shouldBrake = distance < Math.max(3, Math.abs(controller.snapshot.speedMps) * 1.5);
+      controller.dispatch({ type: 'SET_THROTTLE', value: shouldBrake ? 0 : 1 });
+      controller.dispatch({ type: 'SET_BRAKE', value: shouldBrake });
+      controller.update(1 / 60);
+      if (Math.abs(request.originX - controller.snapshot.vehicleX) < 2.5 &&
+        Math.abs(controller.snapshot.speedMps) <= 0.35) {
+        controller.dispatch({ type: 'COLLECT_REQUEST', requestId: request.id });
+        collected = true;
+      }
+    }
+    expect(collected).toBe(true);
+    expect(controller.snapshot.message).toContain('Voy a Gamarra');
+    const occupiedMass = controller.worldSnapshot.body.massKg;
+    controller.dispatch({ type: 'SET_BRAKE', value: false });
+    for (let index = 0; index < 3600; index += 1) {
+      controller.dispatch({ type: 'SET_THROTTLE',
+        value: controller.snapshot.engineLoadPercent >= 82 ? 0 : 1 });
+      controller.update(1 / 60);
+      const status = controller.snapshot.ride?.requests.find((item) =>
+        item.request.id === request.id)?.status;
+      if (status === 'delivered') break;
+    }
+    expect(controller.snapshot.message).toContain('No te pago');
+    expect(controller.snapshot.ride?.deliveredRevenue).toBe(0);
+    expect(controller.worldSnapshot.body.massKg).toBeLessThan(occupiedMass);
+  });
+
   it('detiene reloj y física al pausar', () => {
     const controller = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(controller);

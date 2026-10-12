@@ -32,6 +32,11 @@ interface RequestHitArea {
   readonly height: number;
 }
 
+const PEOPLE_COLORS: Readonly<Record<string, string>> = {
+  azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
+};
+const DEFAULT_PERSON_COLOR = '#62b7ff';
+
 export function createCanvasRenderer(canvas: HTMLCanvasElement,
   onPassengerClick?: (requestId: string) => void): CanvasRenderer {
   const canvasContext = canvas.getContext('2d');
@@ -105,9 +110,24 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.onboardRequestIds = JSON.stringify(snapshot.ride?.requests
         .filter((progress) => progress.status === 'onboard')
         .map((progress) => progress.request.id) ?? []);
+      canvas.dataset.onboardMarkers = JSON.stringify(snapshot.ride?.requests
+        .filter((progress) => progress.status === 'onboard')
+        .map((progress) => ({
+          id: progress.request.id,
+          color: PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR,
+          destinationX: progress.request.destinationX,
+          destinationStop: progress.request.destinationStop,
+          remainingMeters: Math.max(0, progress.request.destinationX - snapshot.vehicleX),
+        })) ?? []);
       canvas.dataset.waitingRequests = JSON.stringify(snapshot.ride?.requests
         .filter((progress) => progress.status === 'waiting')
-        .map((progress) => ({ id: progress.request.id, originX: progress.request.originX })) ?? []);
+        .map((progress) => ({
+          id: progress.request.id,
+          originX: progress.request.originX,
+          destinationStop: progress.request.destinationStop,
+          servedByRoute: progress.request.servedByRoute,
+          markerColor: PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR,
+        })) ?? []);
       const hasWaitingPassenger = snapshot.ride?.requests.some((progress) =>
         progress.status === 'waiting' && progress.request.kind === 'passenger') ?? false;
       canvas.dataset.missingRequirement = snapshot.state === 'PLAYING' && hasWaitingPassenger &&
@@ -239,7 +259,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
     const targetProgress = Math.max(0, Math.min(1,
       passenger.request.destinationX / (level?.finishX ?? 1)));
     const targetX = lineLeft + (lineRight - lineLeft) * targetProgress;
-    context.fillStyle = '#70d5bf';
+    context.fillStyle = PEOPLE_COLORS[passenger.request.attendantVariant] ?? DEFAULT_PERSON_COLOR;
     context.beginPath();
     context.moveTo(targetX, lineY - 13);
     context.lineTo(targetX - 6, lineY - 24);
@@ -257,7 +277,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   for (const passenger of onboard) {
     drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
       passenger.request.destinationStop, passenger.request.destinationX, snapshot.vehicleX,
-      passenger.request.massKg, requestFare(passenger.request));
+      passenger.request.massKg, requestFare(passenger.request), passenger.request.servedByRoute);
     cardX += 154;
   }
   if (nextRequest) {
@@ -284,14 +304,11 @@ function drawRouteCombiIcon(context: CanvasRenderingContext2D, x: number, y: num
 
 function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: number,
   variant: string, destination: string, destinationX: number, vehicleX: number,
-  massKg: number, fare: number): void {
-  const colors: Readonly<Record<string, string>> = {
-    azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
-  };
+  massKg: number, fare: number, servedByRoute: boolean): void {
   context.fillStyle = 'rgba(255,255,255,0.08)';
   roundedRect(context, x, y - 17, 145, 34, 8);
   context.fill();
-  context.fillStyle = colors[variant] ?? '#62b7ff';
+  context.fillStyle = PEOPLE_COLORS[variant] ?? DEFAULT_PERSON_COLOR;
   context.beginPath();
   context.arc(x + 17, y - 3, 7, 0, Math.PI * 2);
   context.fill();
@@ -299,11 +316,14 @@ function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: numb
   context.fillStyle = '#fff5d9';
   context.textAlign = 'left';
   context.font = '800 9px system-ui';
-  context.fillText(`Desde ${shortStopName(destination)}`, x + 31, y - 2);
+  context.fillText(`Pidió ${shortStopName(destination)}`, x + 31, y - 2);
   context.fillStyle = 'rgba(255,255,255,0.68)';
   context.font = '700 8px system-ui';
   const remainingMeters = Math.max(0, Math.ceil(destinationX - vehicleX));
-  context.fillText(`${remainingMeters} m  ${massKg} kg  S/ ${fare}`, x + 31, y + 10);
+  const detail = servedByRoute
+    ? `${remainingMeters} m  ${massKg} kg  S/ ${fare}`
+    : `FUERA DE RUTA  ${remainingMeters} m  S/ 0`;
+  context.fillText(detail, x + 31, y + 10);
 }
 
 function shortStopName(name: string): string {
@@ -315,9 +335,6 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
   snapshot: AppSnapshot, world: WorldSnapshot): readonly RequestHitArea[] {
   if (snapshot.state !== 'PLAYING' || !snapshot.ride) return [];
   const hits: RequestHitArea[] = [];
-  const colors: Readonly<Record<string, string>> = {
-    azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
-  };
   const capacity = gridVehicleCapacity(gridForModel(snapshot.game));
   const onboardRequests = snapshot.ride.requests.filter((item) => item.status === 'onboard');
   for (const progress of snapshot.ride.requests) {
@@ -330,12 +347,15 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     context.globalAlpha = nearby ? 1 : 0.58;
     context.translate(point.x, point.y);
     context.fillStyle = 'rgba(5, 20, 31, 0.88)';
-    roundedRect(context, -42, -104, 84, 28, 9);
+    roundedRect(context, -56, -112, 112, 38, 9);
     context.fill();
     context.fillStyle = nearby ? '#fff5d9' : 'rgba(255,255,255,0.72)';
-    context.font = '800 11px system-ui';
+    context.font = '800 10px system-ui';
     context.textAlign = 'center';
-    context.fillText(`S/ ${requestFare(progress.request)}`, 0, -85);
+    context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -97);
+    context.font = '900 9px system-ui';
+    context.fillText(progress.request.servedByRoute
+      ? `S/ ${requestFare(progress.request)}` : '¿ESTA RUTA?', 0, -83);
     const occupiedSupport = onboardRequests.filter((item) =>
       item.request.kind === progress.request.kind).length;
     const missingRequirement = requestRequirement(progress.request.kind, capacity,
@@ -344,28 +364,28 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
       context.fillStyle = '#fff5d9';
       context.strokeStyle = '#182027';
       context.lineWidth = 3;
-      roundedRect(context, -61, -139, 122, 27, 10);
+      roundedRect(context, -61, -151, 122, 27, 10);
       context.fill();
       context.stroke();
       context.beginPath();
-      context.moveTo(-8, -113);
-      context.lineTo(2, -105);
-      context.lineTo(8, -113);
+      context.moveTo(-8, -125);
+      context.lineTo(2, -117);
+      context.lineTo(8, -125);
       context.fill();
       context.fillStyle = '#182027';
       context.font = '900 9px system-ui';
-      context.fillText(missingRequirement, 0, -121);
+      context.fillText(missingRequirement, 0, -133);
     }
     const personX = progress.request.kind === 'passenger' ? 0 : -22;
     drawWaitingPerson(context, personX,
-      colors[progress.request.attendantVariant] ?? '#62b7ff');
+      PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR);
     if (progress.request.kind !== 'passenger') {
       drawWaitingCargo(context, progress.request.kind, progress.request.visualVariant, 24, -4);
     }
     context.restore();
     const withinPickup = Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS;
     if (withinPickup) hits.push({ requestId: progress.request.id,
-      x: point.x - 58, y: point.y - 108, width: 116, height: 108 });
+      x: point.x - 58, y: point.y - 116, width: 116, height: 116 });
   }
   return hits;
 }
