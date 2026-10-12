@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../data/levels';
+import { routeSegmentForStop } from '../data/transitRoute';
 import { generateLevelOneRequests, generateRequests, requestFare } from './requests';
 
 describe('generación de solicitudes', () => {
@@ -7,13 +8,13 @@ describe('generación de solicitudes', () => {
     expect(generateLevelOneRequests('lima-01')).toEqual(generateLevelOneRequests('lima-01'));
   });
 
-  it('cambia atributos variables con otra semilla sin alterar la ruta base', () => {
+  it('cambia atributos y puntos de bajada sin alterar los orígenes base', () => {
     const first = generateLevelOneRequests('lima-01');
     const second = generateLevelOneRequests('lima-02');
     expect(second).not.toEqual(first);
-    expect(second.map((request) => [request.originX, request.destinationX])).toEqual(
-      first.map((request) => [request.originX, request.destinationX]),
-    );
+    expect(second.map((request) => request.originX)).toEqual(first.map((request) => request.originX));
+    expect(second.map((request) => request.destinationX))
+      .not.toEqual(first.map((request) => request.destinationX));
   });
 
   it('incluye pasajeros y una carga con masa, capacidad y tarifa positivas', () => {
@@ -58,6 +59,19 @@ describe('generación de solicitudes', () => {
       expect(totalAvailable).toBeGreaterThan(level.starGoals[2]);
       expect(level.finishX / level.maxSpeedMps).toBeGreaterThan(20);
       expect(level.durationSeconds).toBe(60);
+    }
+  });
+
+  it('ubica cada bajada dentro del tramo indicado por el mapa en los cinco niveles', () => {
+    for (const level of LEVELS) {
+      for (const request of generateRequests(level.id, level.seed)) {
+        const segment = routeSegmentForStop(request.destinationStop, level.finishX);
+        expect(request.destinationX, `${level.id}/${request.id} baja antes de ${request.destinationStop}`)
+          .toBeGreaterThanOrEqual(segment.startX);
+        expect(request.destinationX, `${level.id}/${request.id} rebasa el siguiente paradero`)
+          .toBeLessThanOrEqual(segment.endX);
+        expect(request.destinationX).toBeGreaterThan(request.originX);
+      }
     }
   });
 

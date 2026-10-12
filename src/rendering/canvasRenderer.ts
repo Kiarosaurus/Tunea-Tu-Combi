@@ -89,11 +89,25 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       currentSnapshot = snapshot;
       currentWorld = world;
       canvas.dataset.physicsY = world.body.position.y.toFixed(4);
+      canvas.dataset.vehicleX = snapshot.vehicleX.toFixed(3);
       canvas.dataset.contactCount = String(world.contacts.length);
       canvas.dataset.routeCode = snapshot.state === 'PLAYING' ? TRANSIT_ROUTE.code : '';
       canvas.dataset.passengerCapacity = String(snapshot.passengerCapacity);
       canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
       canvas.dataset.engineExploded = String(snapshot.engineExploded);
+      const onboardDestination = snapshot.ride?.requests.find((progress) =>
+        progress.status === 'onboard')?.request.destinationX;
+      canvas.dataset.onboardDestinationX = onboardDestination === undefined ? '' : onboardDestination.toFixed(3);
+      canvas.dataset.onboardDestinationStop = snapshot.ride?.requests.find((progress) =>
+        progress.status === 'onboard')?.request.destinationStop ?? '';
+      canvas.dataset.distanceToDestination = onboardDestination === undefined ? '' :
+        Math.max(0, onboardDestination - snapshot.vehicleX).toFixed(3);
+      canvas.dataset.onboardRequestIds = JSON.stringify(snapshot.ride?.requests
+        .filter((progress) => progress.status === 'onboard')
+        .map((progress) => progress.request.id) ?? []);
+      canvas.dataset.waitingRequests = JSON.stringify(snapshot.ride?.requests
+        .filter((progress) => progress.status === 'waiting')
+        .map((progress) => ({ id: progress.request.id, originX: progress.request.originX })) ?? []);
       const hasWaitingPassenger = snapshot.ride?.requests.some((progress) =>
         progress.status === 'waiting' && progress.request.kind === 'passenger') ?? false;
       canvas.dataset.missingRequirement = snapshot.state === 'PLAYING' && hasWaitingPassenger &&
@@ -221,6 +235,18 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
     context.font = '700 8px system-ui';
     context.fillText(shortStopName(stop.name), x, lineY + 20);
   }
+  for (const passenger of onboard) {
+    const targetProgress = Math.max(0, Math.min(1,
+      passenger.request.destinationX / (level?.finishX ?? 1)));
+    const targetX = lineLeft + (lineRight - lineLeft) * targetProgress;
+    context.fillStyle = '#70d5bf';
+    context.beginPath();
+    context.moveTo(targetX, lineY - 13);
+    context.lineTo(targetX - 6, lineY - 24);
+    context.lineTo(targetX + 6, lineY - 24);
+    context.closePath();
+    context.fill();
+  }
   const combiX = lineLeft + (lineRight - lineLeft) * progress;
   drawRouteCombiIcon(context, combiX, lineY - 17);
 
@@ -230,7 +256,8 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   const cardY = top + 93;
   for (const passenger of onboard) {
     drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
-      passenger.request.destinationStop, passenger.request.massKg, requestFare(passenger.request));
+      passenger.request.destinationStop, passenger.request.destinationX, snapshot.vehicleX,
+      passenger.request.massKg, requestFare(passenger.request));
     cardX += 154;
   }
   if (nextRequest) {
@@ -256,7 +283,8 @@ function drawRouteCombiIcon(context: CanvasRenderingContext2D, x: number, y: num
 }
 
 function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: number,
-  variant: string, destination: string, massKg: number, fare: number): void {
+  variant: string, destination: string, destinationX: number, vehicleX: number,
+  massKg: number, fare: number): void {
   const colors: Readonly<Record<string, string>> = {
     azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
   };
@@ -271,10 +299,11 @@ function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: numb
   context.fillStyle = '#fff5d9';
   context.textAlign = 'left';
   context.font = '800 9px system-ui';
-  context.fillText(shortStopName(destination), x + 31, y - 2);
+  context.fillText(`Desde ${shortStopName(destination)}`, x + 31, y - 2);
   context.fillStyle = 'rgba(255,255,255,0.68)';
   context.font = '700 8px system-ui';
-  context.fillText(`${massKg} kg  S/ ${fare}`, x + 31, y + 10);
+  const remainingMeters = Math.max(0, Math.ceil(destinationX - vehicleX));
+  context.fillText(`${remainingMeters} m  ${massKg} kg  S/ ${fare}`, x + 31, y + 10);
 }
 
 function shortStopName(name: string): string {

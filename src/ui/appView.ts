@@ -17,7 +17,7 @@ import {
   validateGridBuild,
   type GridPlacement,
 } from '../game/model';
-import { STOP_RADIUS_METERS } from '../game/rideSession';
+import { hasReachedDestination } from '../game/rideSession';
 import {
   dragAnchorFromElement,
   gridTargetFromPointer,
@@ -818,7 +818,8 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
     const onboard = ride.requests.find((item) =>
       item.status === 'onboard' && item.request.kind !== 'passenger');
     delivery.hidden = !onboard;
-    delivery.disabled = !onboard || Math.abs(snapshot.vehicleX - onboard.request.destinationX) > STOP_RADIUS_METERS;
+    delivery.disabled = !onboard ||
+      !hasReachedDestination(snapshot.vehicleX, onboard.request.destinationX);
     delivery.textContent = onboard
       ? `${onboard.request.kind === 'passenger' ? 'Bajar' : 'Entregar carga'} en ${onboard.request.destinationStop}`
       : 'Completar entrega';

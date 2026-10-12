@@ -27,8 +27,10 @@ function assembleBaseVehicle(controller: AppController): void {
 }
 
 function addPassengerSeat(controller: AppController): void {
-  controller.dispatch({ type: 'BUY_PART', kind: 'seat' });
-  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'seat', column: 4, row: 3 });
+  for (const column of [4, 5]) {
+    controller.dispatch({ type: 'BUY_PART', kind: 'seat' });
+    controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'seat', column, row: 3 });
+  }
 }
 
 function addCargoSupports(controller: AppController, suspension = false): void {
@@ -48,9 +50,13 @@ function completeRide(controller: AppController): void {
   for (let index = 0; index < 3700 && controller.snapshot.state === 'PLAYING'; index += 1) {
     controller.update(1 / 60);
     const snapshot = controller.snapshot;
-    const hasOnboard = snapshot.ride?.requests.some((progress) => progress.status === 'onboard') ?? false;
-    const waiting = hasOnboard ? undefined
-      : snapshot.ride?.requests.find((progress) => progress.status === 'waiting');
+    const onboardCount = snapshot.ride?.requests.filter((progress) =>
+      progress.status === 'onboard').length ?? 0;
+    const waitingRequests = snapshot.ride?.requests.filter((progress) =>
+      progress.status === 'waiting') ?? [];
+    const waiting = onboardCount < snapshot.passengerCapacity
+      ? waitingRequests.find((progress) => progress.request.kind === 'passenger') ?? waitingRequests[0]
+      : undefined;
     if (waiting) {
       const distance = waiting.request.originX - snapshot.vehicleX;
       const shouldBrake = distance < Math.max(2.5, Math.abs(snapshot.speedMps) * 1.35) &&

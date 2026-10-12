@@ -14,32 +14,58 @@ async function engageControlledBrake(page: Page, targetPercent: 50 | 100): Promi
   throw new Error(`El freno no recorrió el nivel de ${targetPercent} %.`);
 }
 
-async function pickupStoppedRequest(page: Page, requestId: string): Promise<void> {
-  const capacity = page.locator('[data-ui="capacity"]');
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+async function pickupStoppedRequest(page: Page, requestId: string, originX: number): Promise<void> {
+  const canvas = page.locator('canvas');
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const currentX = Number(await canvas.getAttribute('data-vehicle-x'));
+    if (currentX < originX - 3) {
+      const approachX = currentX < originX - 6 ? originX - 6 : originX - 3;
+      await page.keyboard.down('d');
+      await expect.poll(async () => Number(await canvas.getAttribute('data-vehicle-x')),
+        { timeout: 12_000, intervals: [50] }).toBeGreaterThanOrEqual(approachX);
+      await page.keyboard.up('d');
+      await engageControlledBrake(page, 100);
+      await expect.poll(async () => Math.abs(Number.parseFloat(
+        await page.locator('[data-ui="speed"]').innerText())),
+      { timeout: 4_000 }).toBeLessThanOrEqual(0.05);
+      await page.keyboard.up(' ');
+      continue;
+    }
     await page.keyboard.press('ArrowDown');
-    if (await capacity.innerText() === '1 / 1') return;
-    await page.keyboard.down('d');
-    await page.waitForTimeout(400);
-    await page.keyboard.up('d');
-    await engageControlledBrake(page, 100);
-    await expect.poll(async () => Math.abs(Number.parseFloat(
-      await page.locator('[data-ui="speed"]').innerText())), { timeout: 4_000 }).toBeLessThanOrEqual(0.05);
-    await page.keyboard.up(' ');
+    const onboard = JSON.parse(await canvas.getAttribute('data-onboard-request-ids') ?? '[]') as string[];
+    if (onboard.includes(requestId)) return;
+    const vehicleX = Number(await canvas.getAttribute('data-vehicle-x'));
+    if (vehicleX > originX + 3.4) throw new Error(`Se rebasó el origen de ${requestId}.`);
   }
-  await expect(capacity, `No se recogió ${requestId}.`).toHaveText('1 / 1');
+  throw new Error(`No se recogió ${requestId}.`);
 }
 
 async function clickRequestOnRoute(page: Page, requestId: string): Promise<void> {
   const canvas = page.locator('canvas');
-  await expect(canvas).toHaveAttribute('data-pickup-request', requestId, { timeout: 15_000 });
+  const waiting = JSON.parse(await canvas.getAttribute('data-waiting-requests') ?? '[]') as
+    { id: string; originX: number }[];
+  const originX = waiting.find((request) => request.id === requestId)?.originX ?? Number.NaN;
+  expect(originX, `${requestId} debe seguir esperando en la ruta.`).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const vehicleX = Number(await canvas.getAttribute('data-vehicle-x'));
+    const speed = Math.abs(Number.parseFloat(await page.locator('[data-ui="speed"]').innerText()));
+    return originX - vehicleX <= Math.max(10, speed * 3.2);
+  }, { timeout: 15_000 }).toBe(true);
   await page.keyboard.up('d');
   await page.keyboard.up('ArrowRight');
   await engageControlledBrake(page, 100);
   await expect.poll(async () => Math.abs(Number.parseFloat(
     await page.locator('[data-ui="speed"]').innerText())), { timeout: 8_000 }).toBeLessThanOrEqual(0.05);
   await page.keyboard.up(' ');
-  await pickupStoppedRequest(page, requestId);
+  await pickupStoppedRequest(page, requestId, originX);
+  const routePosition = await page.locator('canvas').evaluate((canvas) => ({
+    vehicleX: Number((canvas as HTMLElement).dataset.vehicleX),
+    destinationX: Number((canvas as HTMLElement).dataset.onboardDestinationX),
+    remaining: Number((canvas as HTMLElement).dataset.distanceToDestination),
+  }));
+  expect(routePosition.destinationX).toBeGreaterThan(routePosition.vehicleX);
+  expect(routePosition.remaining).toBeCloseTo(
+    routePosition.destinationX - routePosition.vehicleX, 2);
   await page.keyboard.down('d');
 }
 
@@ -58,6 +84,7 @@ async function assembleVehicle(page: Page, suspension = false, cargoSupports = t
   await placeWorkshopPart(page, 'Rueda estándar', 8, 6);
   await placeWorkshopPart(page, 'Motor urbano', 7, 4);
   await placeWorkshopPart(page, 'Asiento', 5, 4);
+  await placeWorkshopPart(page, 'Asiento', 6, 4);
   if (cargoSupports) {
     await placeWorkshopPart(page, 'Parrilla de techo', 3, 3);
     await placeWorkshopPart(page, 'Portacarga posterior', 1, 5);
@@ -185,11 +212,7 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   const revenue = page.locator('[data-ui="revenue"]');
   await expect(page.locator('canvas')).toHaveAttribute('data-route-code', 'CR27');
   await clickRequestOnRoute(page, 'primer-pasajero');
-  await expect(revenue).toHaveText('S/ 5', { timeout: 20_000 });
-  await expect(page.locator('[data-ui="capacity"]')).toHaveText('0 / 1');
   await clickRequestOnRoute(page, 'segundo-pasajero');
-  await expect(page.locator('[data-ui="capacity"]')).toHaveText('1 / 1');
-  await expect(revenue).toHaveText('S/ 10', { timeout: 20_000 });
   await clickRequestOnRoute(page, 'tercer-pasajero');
   await expect(revenue).toHaveText('S/ 15', { timeout: 20_000 });
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 40_000 });
@@ -301,13 +324,15 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
 async function completeRoute(page: Page,
   deliveries: readonly (readonly [requestId: string, revenue: string])[]): Promise<void> {
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
-  const revenue = page.locator('[data-ui="revenue"]');
   await page.keyboard.down('d');
-  for (const [requestId, expectedRevenue] of deliveries) {
+  for (const [requestId] of deliveries) {
     await clickRequestOnRoute(page, requestId);
-    await expect(revenue).toHaveText(expectedRevenue, { timeout: 22_000 });
   }
+  const finalRevenue = deliveries.at(-1)?.[1];
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 45_000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
+  if (finalRevenue) {
+    await expect(page.getByText('Entregado').locator('..')).toContainText(finalRevenue);
+  }
 }
