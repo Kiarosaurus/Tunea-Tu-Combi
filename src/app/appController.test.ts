@@ -156,6 +156,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'primer-pasajero' });
     expect(controller.snapshot.fareNotice?.total).toBeGreaterThan(0);
     expect(controller.snapshot.fareNotice?.surcharge).toBe(0);
+    expect(controller.snapshot.messageSource).toBe('passenger');
     controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.speedMps).toBeGreaterThan(1);
@@ -188,6 +189,7 @@ describe('flujo vertical del primer recorrido', () => {
     }
     expect(collected).toBe(true);
     expect(controller.snapshot.message).toContain('no va a Gamarra');
+    expect(controller.snapshot.messageSource).toBe('passenger');
     expect(controller.snapshot.fareNotice).toBeNull();
     const occupiedMass = controller.worldSnapshot.body.massKg;
     controller.dispatch({ type: 'SET_BRAKE', value: false });
@@ -200,6 +202,7 @@ describe('flujo vertical del primer recorrido', () => {
       if (status === 'delivered') break;
     }
     expect(controller.snapshot.message).toContain('No te pago');
+    expect(controller.snapshot.messageSource).toBe('passenger');
     expect(controller.snapshot.ride?.deliveredRevenue).toBe(0);
     expect(controller.worldSnapshot.body.massKg).toBeLessThan(occupiedMass);
   });
@@ -443,5 +446,22 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.state).toBe('PLAYING');
     expect(controller.snapshot.ride?.remainingSeconds).toBe(60);
     expect(controller.snapshot.vehicleX).toBe(2);
+  });
+
+  it('recupera en otro nivel la cuadrícula exacta del último recorrido', () => {
+    const storage = memoryStorage();
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(2), false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    enterWorkshop(controller);
+    addPassengerSeat(controller);
+    const previousGrid = gridForModel(controller.snapshot.game).map((item) => ({ ...item }));
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'PAUSE' });
+    controller.dispatch({ type: 'ABORT_RIDE' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'subida-al-cerro' });
+    expect(gridForModel(controller.snapshot.game)).toHaveLength(1);
+    controller.dispatch({ type: 'RESTORE_LAST_BUILD' });
+    expect(gridForModel(controller.snapshot.game)).toEqual(previousGrid);
+    expect(controller.snapshot.message).toContain('Último arreglo recuperado');
   });
 });

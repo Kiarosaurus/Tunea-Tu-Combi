@@ -83,6 +83,10 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await expect(fareReward).toBeVisible();
   await expect(fareReward.locator('[data-ui="fare-reward-value"]')).toHaveText(fareLabel ?? '');
   await expect(fareReward.locator('img')).toHaveCount(2);
+  const expectedSource = targetRequest?.kind === 'passenger' ? 'passenger' : 'system';
+  await expect(page.locator('.ride-toast')).toHaveAttribute('data-source', expectedSource);
+  await expect(page.locator('.ride-toast')).toHaveAttribute('aria-label',
+    targetRequest?.kind === 'passenger' ? /Pasajero:/ : /Juego:/);
   await page.keyboard.down('d');
 }
 
@@ -145,6 +149,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await dismissGoals(page);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'WORKSHOP');
   await expect(page.getByRole('heading', { name: 'Arma tu combi' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'No hay un arreglo anterior para recuperar' })).toBeDisabled();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
   await expect(page.locator('.grid-piece')).toHaveCount(1);
@@ -243,6 +248,11 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
   await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
+  await page.getByRole('button', { name: /Siguiente: Subida al cerro/ }).click();
+  const restoreBuild = page.getByRole('button', { name: 'Recuperar el arreglo del último nivel jugado' });
+  await expect(restoreBuild).toBeEnabled();
+  await restoreBuild.click();
+  await expect(page.locator('.grid-piece')).toHaveCount(8);
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');

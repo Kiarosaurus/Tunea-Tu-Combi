@@ -58,6 +58,7 @@ export interface GameModel {
   readonly pendingPurchases: Inventory;
   readonly workshopBuild: SerializedBuild;
   readonly workshopGrid?: readonly GridPlacement[];
+  readonly lastRideBuild?: readonly GridPlacement[];
   readonly unlockedLevel: number;
   readonly completedLevels: Readonly<Record<string, CompletedLevel>>;
 }
@@ -171,8 +172,50 @@ export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
     ownedParts,
     workshopGrid,
     workshopBuild: { driverSeat: 'seat' },
+    ...(model.lastRideBuild ? { lastRideBuild: model.lastRideBuild } : {}),
     unlockedLevel: model.unlockedLevel,
     completedLevels: model.completedLevels,
+  };
+}
+
+export function rememberLastRideBuild(model: GameModel): GameModel {
+  return {
+    ...model,
+    lastRideBuild: gridForModel(model).map((placement) => ({ ...placement })),
+  };
+}
+
+export function restoreLastRideBuild(model: GameModel): GameModel {
+  const template = model.lastRideBuild;
+  if (!template || template.length === 0) {
+    throw new Error('Completa primero un arreglo y sal a una ruta.');
+  }
+  if (validateGridBuild(template)) throw new Error('El último arreglo ya no es válido.');
+  const required: Partial<Record<PartKind, number>> = {};
+  for (const placement of template) {
+    required[placement.kind] = (required[placement.kind] ?? 0) + 1;
+  }
+  const ownedParts = { ...model.ownedParts };
+  const pendingPurchases = { ...model.pendingPurchases };
+  let cost = 0;
+  for (const part of PART_CATALOG) {
+    if (part.kind === 'chassis') continue;
+    const missing = Math.max(0, (required[part.kind] ?? 0) - ownedParts[part.kind]);
+    cost += missing * part.price;
+    ownedParts[part.kind] += missing;
+    pendingPurchases[part.kind] += missing;
+  }
+  if (cost > model.wallet) {
+    throw new Error(`Faltan S/ ${cost - model.wallet} para recuperar el último arreglo.`);
+  }
+  const workshopGrid = template.map((placement) => ({ ...placement }));
+  return {
+    ...model,
+    wallet: model.wallet - cost,
+    ownedParts,
+    pendingPurchases,
+    workshopGrid,
+    workshopBuild: gridToLegacyBuild(workshopGrid),
   };
 }
 

@@ -21,6 +21,8 @@ import {
   placePart,
   removePart,
   refundPart,
+  rememberLastRideBuild,
+  restoreLastRideBuild,
   validateBuild,
   validateGridBuild,
   type AnchorId,
@@ -50,6 +52,7 @@ export type AppAction =
   | { readonly type: 'REMOVE_GRID_PART'; readonly placementId: string }
   | { readonly type: 'REFUND_PART'; readonly kind: PartKind }
   | { readonly type: 'CLEAR_OPTIONAL_PARTS' }
+  | { readonly type: 'RESTORE_LAST_BUILD' }
   | { readonly type: 'START_RIDE' }
   | { readonly type: 'SET_THROTTLE'; readonly value: -1 | 0 | 1 }
   | { readonly type: 'SET_BRAKE'; readonly value: boolean }
@@ -79,6 +82,7 @@ export interface AppSnapshot {
   readonly speedMps: number;
   readonly passengerCapacity: number;
   readonly message: string;
+  readonly messageSource: MessageSource;
   readonly won: boolean | null;
   readonly stars: number | null;
   readonly engineHealthPercent: number;
@@ -88,6 +92,8 @@ export interface AppSnapshot {
   readonly saveRecovered: boolean;
   readonly fareNotice: FareQuote | null;
 }
+
+export type MessageSource = 'system' | 'passenger';
 
 export class AppController {
   readonly #machine = new AppStateMachine();
@@ -104,6 +110,7 @@ export class AppController {
   #brakeStrength = 0;
   #brakePressCount = 0;
   #message = '';
+  #messageSource: MessageSource = 'system';
   #won: boolean | null = null;
   #stars: number | null = null;
   #engineHealth = 1;
@@ -124,6 +131,7 @@ export class AppController {
       pendingPurchases: saved.pendingPurchases,
       workshopBuild: saved.workshopBuild,
       ...(saved.workshopGrid ? { workshopGrid: saved.workshopGrid } : {}),
+      ...(saved.lastRideBuild ? { lastRideBuild: saved.lastRideBuild } : {}),
       unlockedLevel: saved.unlockedLevel,
       completedLevels: saved.completedLevels,
     } : createInitialGameModel();
@@ -148,6 +156,7 @@ export class AppController {
         ? gridVehicleCapacity(gridForModel(this.#model)).passenger
         : vehicleCapacity(this.#model.workshopBuild).passenger,
       message: this.#message,
+      messageSource: this.#messageSource,
       won: this.#won,
       stars: this.#stars,
       engineHealthPercent: Math.round(this.#engineHealth * 100),
@@ -167,7 +176,7 @@ export class AppController {
     try {
       this.#dispatch(action);
     } catch (error) {
-      this.#message = error instanceof Error ? error.message : 'No se pudo completar la acción.';
+      this.#setMessage(error instanceof Error ? error.message : 'No se pudo completar la acción.');
       this.#notify();
     }
   }
@@ -218,7 +227,7 @@ export class AppController {
             if (request && request.kind !== 'passenger') {
               this.#world.detachPayload(attendantPayloadId(requestId));
             }
-            this.#message = 'Una carga se desprendió por el impacto.';
+            this.#setMessage('Una carga se desprendió por el impacto.');
           }
         }
         const world = this.#world.snapshot();
@@ -238,7 +247,7 @@ export class AppController {
         });
         this.#engineHealth = damage.health;
         this.#chassisContactActive = chassisContacts.length > 0;
-        if (damage.impactApplied) this.#message = `Motor al ${Math.round(this.#engineHealth * 100)} %.`;
+        if (damage.impactApplied) this.#setMessage(`Motor al ${Math.round(this.#engineHealth * 100)} %.`);
         if (this.#engineHealth === 0) {
           this.#triggerEngineExplosion();
           return;
@@ -248,16 +257,17 @@ export class AppController {
         if (arrivals.length > 0) {
           const wrongRoute = arrivals.find((arrival) => !arrival.servedByRoute);
           if (wrongRoute) {
-            this.#message = `Te dije ${wrongRoute.destinationStop}. Esta combi no va. No te pago.`;
+            this.#setMessage(`Te dije ${wrongRoute.destinationStop}. Esta combi no va. No te pago.`,
+              'passenger');
           } else {
             const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
-            this.#message = `Pasajero en destino: S/ ${totalFare}. Asiento libre.`;
+            this.#setMessage(`Pasajero en destino: S/ ${totalFare}. Asiento libre.`);
           }
         }
         this.#ride.advance(durationSeconds, world.body.position.x, world.body.angleRadians,
           world.joints.filter((joint) => joint.broken).length);
       } catch {
-        this.#message = 'La simulación se detuvo para proteger la partida.';
+        this.#setMessage('La simulación se detuvo para proteger la partida.');
         this.#machine.transition('RESULTS');
         this.#won = false;
         return;
@@ -318,6 +328,9 @@ export class AppController {
       case 'CLEAR_OPTIONAL_PARTS':
         this.#mutateModel(clearOptionalParts(this.#model));
         return;
+      case 'RESTORE_LAST_BUILD':
+        this.#restoreLastBuild();
+        return;
       case 'START_RIDE':
         this.#startRide();
         return;
@@ -360,14 +373,14 @@ export class AppController {
           throw new Error('Termina un recorrido antes de reintentarlo.');
         }
         this.#createRide(this.#selectedLevelId);
-        this.#message = 'Nuevo intento. Misma combi, nueva oportunidad.';
+        this.#setMessage('Nuevo intento. Misma combi, nueva oportunidad.');
         this.#machine.transition('PLAYING');
         return;
       case 'ABORT_RIDE':
         if (this.#machine.state !== 'PAUSED') throw new Error('Pausa antes de salir del recorrido.');
         this.#ride = null;
         this.#world = createDemoWorld();
-        this.#message = 'Intento cancelado. Las compras se conservan.';
+        this.#setMessage('Intento cancelado. Las compras se conservan.');
         this.#machine.transition('RESULTS');
         this.#won = false;
         return;
@@ -405,7 +418,7 @@ export class AppController {
     if (level.number > this.#model.unlockedLevel) throw new Error('Este nivel está bloqueado.');
     this.#selectedLevelId = level.id;
     this.#model = prepareLevelWorkshop(this.#model, level.buildBudget, level.defaultExtras);
-    this.#message = '';
+    this.#setMessage('');
     this.#save();
     this.#machine.transition('WORKSHOP');
   }
@@ -413,7 +426,7 @@ export class AppController {
   #mutateModel(model: GameModel): void {
     if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller para modificar piezas.');
     this.#model = model;
-    this.#message = '';
+    this.#setMessage('');
     this.#save();
     this.#notify();
   }
@@ -426,6 +439,7 @@ export class AppController {
       ? validateGridBuild(gridForModel(this.#model))
       : validateBuild(this.#model.workshopBuild);
     if (issue) throw new Error(issue);
+    this.#model = rememberLastRideBuild(this.#model);
     this.#createRide(level.id);
     this.#model = { ...this.#model, pendingPurchases: emptyInventory() };
     this.#save();
@@ -462,13 +476,13 @@ export class AppController {
     this.#fareNotice = null;
     this.#fareNoticeRemainingSeconds = 0;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
-    this.#message = stats.loosePieces
+    this.#setMessage(stats.loosePieces
       ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión cay${stats.loosePieces === 1 ? 'ó' : 'eron'} dentro y no funciona${stats.loosePieces === 1 ? '' : 'n'}.`
       : stats.engineForceN === 0
         ? 'La ruta inició, pero sin motor la combi no puede acelerar.'
         : wheelCount === 0
           ? 'La ruta inició, pero sin ruedas no hay tracción.'
-          : '';
+          : '');
   }
 
   #restartRide(): void {
@@ -476,7 +490,7 @@ export class AppController {
       throw new Error('No hay un intento para reiniciar.');
     }
     this.#createRide(this.#selectedLevelId);
-    this.#message = 'Intento reiniciado.';
+    this.#setMessage('Intento reiniciado.');
     if (this.#machine.state === 'PAUSED') this.#machine.transition('PLAYING');
     else this.#notify();
   }
@@ -518,11 +532,12 @@ export class AppController {
       this.#fareNotice = fareQuote;
       this.#fareNoticeRemainingSeconds = 1.8;
     }
-    this.#message = request?.kind === 'passenger'
+    this.#setMessage(request?.kind === 'passenger'
       ? request.servedByRoute
-        ? `Pasajero: "Voy a ${request.destinationStop}".`
+        ? `Voy a ${request.destinationStop}.`
         : `Esta combi no va a ${request.destinationStop}. Me bajaré luego.`
-      : 'Carga asegurada. Llévala a su destino.';
+      : 'Carga asegurada. Llévala a su destino.', request?.kind === 'passenger'
+      ? 'passenger' : 'system');
     this.#notify();
   }
 
@@ -533,7 +548,7 @@ export class AppController {
       hasReachedDestination(vehicleX, item.request.destinationX))?.request;
     const fare = this.#ride.deliver(vehicleX);
     if (request) this.#detachRequestPayload(request.id);
-    this.#message = `Entrega completada: S/ ${fare}.`;
+    this.#setMessage(`Entrega completada: S/ ${fare}.`);
     this.#notify();
   }
 
@@ -543,9 +558,9 @@ export class AppController {
     this.#model = result.model;
     this.#won = result.won;
     this.#stars = result.stars;
-    this.#message = result.stars === 3
+    this.#setMessage(result.stars === 3
       ? 'Tres estrellas. Nueva ruta desbloqueada.'
-      : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`;
+      : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`);
     this.#throttle = 0;
     this.#save();
     this.#machine.transition('RESULTS');
@@ -565,7 +580,7 @@ export class AppController {
     this.#stars = 0;
     this.#throttle = 0;
     this.#braking = false;
-    this.#message = 'La policía detuvo la combi por salir de la ruta.';
+    this.#setMessage('La policía detuvo la combi por salir de la ruta.');
     this.#machine.transition('RESULTS');
   }
 
@@ -577,7 +592,7 @@ export class AppController {
     this.#stars = 0;
     this.#throttle = 0;
     this.#braking = false;
-    this.#message = 'El motor explotó. La combi quedó fuera de servicio.';
+    this.#setMessage('El motor explotó. La combi quedó fuera de servicio.');
     this.#notify();
   }
 
@@ -590,7 +605,7 @@ export class AppController {
     this.#world = createDemoWorld();
     this.#debugEnabled = false;
     this.#reducedMotion = false;
-    this.#message = 'Progreso borrado. Partida nueva lista.';
+    this.#setMessage('Progreso borrado. Partida nueva lista.');
     this.#notify();
   }
 
@@ -600,7 +615,7 @@ export class AppController {
     this.#selectedLevelId = null;
     this.#ride = null;
     this.#world = createDemoWorld();
-    this.#message = 'Perfil de demostración cargado: campaña y piezas disponibles.';
+    this.#setMessage('Perfil de demostración cargado: campaña y piezas disponibles.');
     this.#save();
     this.#notify();
   }
@@ -635,7 +650,7 @@ export class AppController {
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
-    this.#message = '';
+    this.#setMessage('');
     this.#machine.transition('MENU');
   }
 
@@ -647,12 +662,25 @@ export class AppController {
         reducedMotion: this.#reducedMotion,
       } });
     } catch {
-      this.#message = 'No se pudo guardar en este navegador. Revisa el almacenamiento local.';
+      this.#setMessage('No se pudo guardar en este navegador. Revisa el almacenamiento local.');
     }
   }
 
   #notify(): void {
     for (const listener of this.#listeners) listener(this.snapshot);
+  }
+
+  #restoreLastBuild(): void {
+    if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller para recuperar el arreglo.');
+    this.#model = restoreLastRideBuild(this.#model);
+    this.#setMessage('Último arreglo recuperado. Revisa el presupuesto y sal a rodar.');
+    this.#save();
+    this.#notify();
+  }
+
+  #setMessage(message: string, source: MessageSource = 'system'): void {
+    this.#message = message;
+    this.#messageSource = source;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialGameModel } from '../game/model';
+import { createInitialGameModel, rememberLastRideBuild } from '../game/model';
 import {
   createSaveData,
   isSaveDataV1,
@@ -44,6 +44,24 @@ describe('guardado local v1', () => {
     expect(isSaveDataV1({ ...base, wallet: -1 })).toBe(false);
     expect(isSaveDataV1({ ...base, ownedParts: { ...base.ownedParts, wheel: 1 } })).toBe(false);
     expect(isSaveDataV1({ ...base, workshopBuild: { frontWheel: 'seat' } })).toBe(false);
+    expect(isSaveDataV1({ ...base, lastRideBuild: [
+      { id: 'fuera', kind: 'wheel', column: 99, row: 99 },
+    ] })).toBe(false);
+  });
+
+  it('persiste la cuadrícula del último recorrido sin exigir su inventario actual', () => {
+    const initial = createInitialGameModel();
+    const remembered = rememberLastRideBuild({
+      ...initial,
+      ownedParts: { ...initial.ownedParts, seat: 2 },
+      workshopGrid: [
+        ...(initial.workshopGrid ?? []),
+        { id: 'seat-2', kind: 'seat', column: 4, row: 3 },
+      ],
+    });
+    if (!remembered.lastRideBuild) throw new Error('No se guardó la plantilla de prueba.');
+    const currentLevel = { ...initial, lastRideBuild: remembered.lastRideBuild };
+    expect(isSaveDataV1(createSaveData(currentLevel, false))).toBe(true);
   });
 
   it('migra una versión de prueba mínima a v1', () => {

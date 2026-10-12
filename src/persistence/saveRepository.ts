@@ -91,6 +91,7 @@ export function isSaveDataV1(value: unknown): value is SaveDataV1 {
     !isInventory(value.ownedParts) || !isInventory(value.pendingPurchases) ||
     !isBuild(value.workshopBuild, value.ownedParts) ||
     (value.workshopGrid !== undefined && !isGrid(value.workshopGrid, value.ownedParts)) ||
+    (value.lastRideBuild !== undefined && !isGrid(value.lastRideBuild)) ||
     !isRecord(value.completedLevels) ||
     !isRecord(value.settings) ||
     !isUnitInterval(value.settings.masterVolume) ||
@@ -134,7 +135,7 @@ function isBuild(value: unknown, inventory: Inventory): value is SerializedBuild
   return PART_CATALOG.every((part) => (placed[part.kind] ?? 0) <= inventory[part.kind]);
 }
 
-function isGrid(value: unknown, inventory: Inventory): value is readonly GridPlacement[] {
+function isGrid(value: unknown, inventory?: Inventory): value is readonly GridPlacement[] {
   if (!Array.isArray(value)) return false;
   const placed: Partial<Record<PartKind, number>> = {};
   const occupied = new Set<string>();
@@ -159,7 +160,8 @@ function isGrid(value: unknown, inventory: Inventory): value is readonly GridPla
     ids.add(item.id);
     placed[kind] = (placed[kind] ?? 0) + 1;
   }
-  return PART_CATALOG.every((part) => (placed[part.kind] ?? 0) <= inventory[part.kind]);
+  return inventory === undefined ||
+    PART_CATALOG.every((part) => (placed[part.kind] ?? 0) <= inventory[part.kind]);
 }
 
 function migrateTestSave(value: unknown): SaveDataV1 | null {

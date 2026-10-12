@@ -112,6 +112,9 @@ En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
 asegura las piezas conectadas. Durante el arrastre, una sombra verde o roja
 previsualiza la huella completa y avisa si la colocación es válida.
+Después de iniciar un recorrido, el taller recuerda esa distribución. El botón
+`Recuperar combi` la reconstruye en cualquier nivel y compra únicamente las
+piezas que falten con el presupuesto del intento actual.
 La cuadrícula está integrada en la silueta lateral de la combi: motor, asientos,
 parrilla, portacarga y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
@@ -137,7 +140,10 @@ persona ocupa la posición de su asiento; su masa e inercia se agregan mientras
 está a bordo y pueden inclinar o volcar la combi. Una carga se pierde si rompe su
 unión. La tarifa se acuerda al recoger según la distancia que falta hasta el
 destino: va de S/ 1 a S/ 5 y cada carga añade S/ 2. El cobro aparece brevemente
-sobre la combi, no antes de recoger. Las cuotas se ajustan a esos importes.
+sobre la combi con monedas peruanas de acabado mate, no antes de recoger. Los
+mensajes del juego usan una placa oscura y el diálogo de pasajeros un globo
+claro rotulado, de modo que ambos se distinguen sin cambiar su posición. Las
+cuotas se ajustan a esos importes.
 El dinero entregado determina hasta tres estrellas,
 pero no se acumula como saldo. Solo tres estrellas desbloquean la siguiente ruta.
 

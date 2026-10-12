@@ -1930,10 +1930,11 @@ button:focus-visible {
 .topbar-home[hidden] { display: none; }
 
 .workshop-toolbar {
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
 }
 
-.workshop-goals-button {
+.workshop-goals-button,
+.workshop-restore-button {
   min-height: 42px;
   padding: 0 13px;
   border: 2px solid #f2c14e;
@@ -1944,6 +1945,19 @@ button:focus-visible {
   font-size: 10px;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.workshop-restore-button {
+  border-color: #70d5bf;
+  background: rgba(112, 213, 191, 0.1);
+  color: #a9eadb;
+}
+
+.workshop-restore-button:disabled {
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.035);
+  color: rgba(255,255,255,0.38);
+  cursor: default;
 }
 
 .game-popup {
@@ -2106,6 +2120,7 @@ button:focus-visible {
   .workshop-quick-stats { grid-column: 1 / -1; grid-row: 2; }
   .workshop-goals-button { grid-column: 2; grid-row: 1; }
   .workshop-toolbar .launch-action { grid-column: 3; grid-row: 1; }
+  .workshop-restore-button { grid-column: 1 / -1; grid-row: 3; }
   .ride-engine-card { display: none !important; }
 }
 
@@ -2165,18 +2180,17 @@ button:focus-visible {
 
 .fare-reward-value {
   margin: 0 -9px;
-  color: #ffd34f;
+  color: #ddb653;
   font-size: clamp(30px, 4.2vw, 58px);
   font-weight: 1000;
   line-height: 0.92;
   letter-spacing: -0.055em;
   text-align: center;
   text-shadow:
-    0 3px 0 #a95f12,
-    0 6px 0 #6f3a0b,
-    0 10px 20px rgba(47, 23, 3, 0.58),
-    0 0 18px rgba(255, 221, 91, 0.52);
-  -webkit-text-stroke: 1px #fff0a0;
+    0 3px 0 #8f6329,
+    0 6px 0 #51381f,
+    0 10px 18px rgba(4, 14, 20, 0.48);
+  -webkit-text-stroke: 1px #f0d894;
 }
 
 .ride-toast {
@@ -2195,6 +2209,40 @@ button:focus-visible {
   line-height: 1.25;
   text-align: center;
   transform: translateX(-50%) rotate(-0.5deg);
+}
+
+.ride-toast::before {
+  display: block;
+  margin-bottom: 3px;
+  color: #f2c14e;
+  content: "JUEGO";
+  font-size: 8px;
+  font-weight: 1000;
+  letter-spacing: 0.16em;
+}
+
+.ride-toast[data-source="passenger"] {
+  border-color: #ef5b3f;
+  border-radius: 20px 20px 20px 6px;
+  background: #f4e3bd;
+  box-shadow: 0 8px 0 #a85a3d, 0 15px 30px rgba(0, 0, 0, 0.24);
+  color: #172630;
+  transform: translateX(-50%) rotate(0.6deg);
+}
+
+.ride-toast[data-source="passenger"]::before {
+  color: #b64431;
+  content: "PASAJERO";
+}
+
+.ride-toast[data-source="passenger"]::after {
+  position: absolute;
+  bottom: -13px;
+  left: 22px;
+  border-top: 15px solid #a85a3d;
+  border-right: 18px solid transparent;
+  content: "";
+  transform: rotate(7deg);
 }
 
 .drive-controls {

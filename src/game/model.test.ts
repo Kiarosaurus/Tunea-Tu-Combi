@@ -13,9 +13,12 @@ import {
   placeGridPart,
   passengerCapacity,
   placePart,
+  prepareLevelWorkshop,
   removePart,
   removeGridPart,
   refundPart,
+  rememberLastRideBuild,
+  restoreLastRideBuild,
   validateBuild,
 } from './model';
 
@@ -129,5 +132,22 @@ describe('taller y economía', () => {
     expect(validateBuild(cleaned.workshopBuild)).toBeNull();
     expect(cleaned.workshopBuild.roof).toBeUndefined();
     expect(cleaned.ownedParts).toEqual(demo.ownedParts);
+  });
+
+  it('recupera el último arreglo y cobra sólo las piezas faltantes del nivel', () => {
+    const purchased = buyPart(createInitialGameModel(), 'seat');
+    const arranged = placeGridPart(purchased, 'seat', 4, 3);
+    const remembered = rememberLastRideBuild(arranged);
+    const nextWorkshop = prepareLevelWorkshop(remembered, 100);
+    const restored = restoreLastRideBuild(nextWorkshop);
+    expect(gridForModel(restored)).toEqual(gridForModel(arranged));
+    expect(restored.wallet).toBe(85);
+    expect(restored.pendingPurchases.seat).toBe(1);
+  });
+
+  it('explica cuando el presupuesto no alcanza para recuperar el arreglo', () => {
+    const remembered = rememberLastRideBuild(createDemoGameModel());
+    const emptyBudget = prepareLevelWorkshop(remembered, 0);
+    expect(() => restoreLastRideBuild(emptyBudget)).toThrow('Faltan S/');
   });
 });

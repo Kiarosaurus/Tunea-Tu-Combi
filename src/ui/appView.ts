@@ -239,11 +239,18 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const goalsButton = actionButton('Metas', 'workshop-goals-button', () => {
     goalsPopup.hidden = false;
   });
+  const restoreButton = actionButton(snapshot.game.lastRideBuild
+    ? 'Recuperar combi' : 'Sin arreglo previo', 'workshop-restore-button', () =>
+    dispatch({ type: 'RESTORE_LAST_BUILD' }));
+  restoreButton.disabled = !snapshot.game.lastRideBuild;
+  restoreButton.setAttribute('aria-label', snapshot.game.lastRideBuild
+    ? 'Recuperar el arreglo del último nivel jugado'
+    : 'No hay un arreglo anterior para recuperar');
   const startButton = actionButton('A rodar', 'primary-action launch-action', () =>
     dispatch({ type: 'START_RIDE' }));
   startButton.setAttribute('aria-label', 'Iniciar recorrido de 60 segundos');
   startButton.disabled = Boolean(buildIssue);
-  toolbar.append(titleBlock, quickStats, goalsButton, startButton);
+  toolbar.append(titleBlock, quickStats, restoreButton, goalsButton, startButton);
   panel.append(toolbar);
 
   goalsPopup.className = 'game-popup goals-popup';
@@ -744,6 +751,9 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   pause.setAttribute('aria-label', 'Pausa');
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
+  message.dataset.source = snapshot.messageSource;
+  message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
+    ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
   panel.append(delivery, message,
     textElement('p', 'pickup-key-hint', 'ESPACIO RECOGER - ABAJO FRENAR'),
     createDriveControls(dispatch), pause);
@@ -836,7 +846,12 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
     timeCard.classList.toggle('is-urgent', ride.remainingSeconds <= 10);
   }
   const message = screen.querySelector<HTMLElement>('.ride-toast');
-  if (message) message.textContent = snapshot.message;
+  if (message) {
+    message.textContent = snapshot.message;
+    message.dataset.source = snapshot.messageSource;
+    message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
+      ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
+  }
   const fareReward = screen.querySelector<HTMLElement>('[data-ui="fare-reward"]');
   const fareRewardValue = screen.querySelector<HTMLElement>('[data-ui="fare-reward-value"]');
   if (fareReward && fareRewardValue) {
