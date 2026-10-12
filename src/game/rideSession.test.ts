@@ -30,6 +30,20 @@ describe('primer recorrido', () => {
     expect(ride.snapshot.requests[0]?.status).toBe('waiting');
   });
 
+  it('fija al subir la tarifa cotizada desde la posición real', () => {
+    const ride = new RideSession();
+    const request = ride.snapshot.requests.find((item) =>
+      item.request.id === 'primer-pasajero')?.request;
+    expect(request).toBeDefined();
+    if (!request) return;
+    const pickupX = request.originX + 3;
+    const quote = ride.collect(request.id, pickupX, 0, oneSeat);
+    expect(quote.total).toBe(requestFare(request, pickupX));
+    expect(ride.snapshot.requests.find((item) => item.request.id === request.id)?.agreedFare)
+      .toEqual(quote);
+    expect(ride.deliver(request.destinationX)).toBe(quote.total);
+  });
+
   it('exige el soporte que corresponde a una carga', () => {
     const ride = new RideSession();
     const cargo = ride.snapshot.requests.find((item) => item.request.kind !== 'passenger')?.request;

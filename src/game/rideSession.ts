@@ -1,6 +1,6 @@
 import { LEVELS } from '../data/levels';
 import { emptyInventory, type GameModel, type VehicleCapacity } from './model';
-import { generateLevelOneRequests, requestFare, type RideRequest } from './requests';
+import { generateLevelOneRequests, requestFareQuote, type FareQuote, type RideRequest } from './requests';
 
 export type { RideRequest } from './requests';
 
@@ -19,6 +19,7 @@ export type RequestStatus = 'waiting' | 'onboard' | 'delivered' | 'missed';
 export interface RequestProgress {
   readonly request: RideRequest;
   readonly status: RequestStatus;
+  readonly agreedFare: FareQuote | null;
 }
 
 export interface CompletedDelivery {
@@ -65,7 +66,7 @@ export class RideSession {
     this.#remainingSeconds = durationSeconds;
     this.#finishX = finishX;
     this.#lostPieces = initialLostPieces;
-    this.#requests = requests.map((request) => ({ request, status: 'waiting' }));
+    this.#requests = requests.map((request) => ({ request, status: 'waiting', agreedFare: null }));
   }
 
   get snapshot(): RideSnapshot {
@@ -99,7 +100,8 @@ export class RideSession {
     if (this.#remainingSeconds === 0 || vehicleX >= this.#finishX) this.#finished = true;
   }
 
-  collect(requestId: string, vehicleX: number, speedMps: number, capacity: VehicleCapacity): void {
+  collect(requestId: string, vehicleX: number, speedMps: number,
+    capacity: VehicleCapacity): FareQuote {
     if (this.#finished) throw new Error('El recorrido ya terminó.');
     const progress = this.#requests.find((item) => item.request.id === requestId);
     if (!progress || progress.status !== 'waiting') throw new Error('La solicitud ya no está disponible.');
@@ -121,10 +123,14 @@ export class RideSession {
         ? 'Falta un asiento libre para este pasajero.'
         : 'Falta un asiento libre para quien acompaña la carga.');
     }
-    this.#setStatus(requestId, 'onboard');
+    const agreedFare = requestFareQuote(progress.request, vehicleX);
+    this.#requests = this.#requests.map((item) => item.request.id === requestId
+      ? { ...item, status: 'onboard', agreedFare }
+      : item);
     const payloadMass = this.#requests.filter((item) => item.status === 'onboard')
       .reduce((total, item) => total + item.request.massKg, 0);
     this.#maximumPayloadMassKg = Math.max(this.#maximumPayloadMassKg, payloadMass);
+    return agreedFare;
   }
 
   deliver(vehicleX: number): number {
@@ -132,7 +138,7 @@ export class RideSession {
     const progress = this.#requests.find((item) => item.status === 'onboard' &&
       hasReachedDestination(vehicleX, item.request.destinationX));
     if (!progress) throw new Error('No hay un destino de pasajero cercano.');
-    return this.#completeDelivery(progress.request);
+    return this.#completeDelivery(progress);
   }
 
   deliverArrived(vehicleX: number): readonly CompletedDelivery[] {
@@ -141,7 +147,7 @@ export class RideSession {
       hasReachedDestination(vehicleX, item.request.destinationX));
     return arrived.map((progress) => ({
       requestId: progress.request.id,
-      fare: this.#completeDelivery(progress.request),
+      fare: this.#completeDelivery(progress),
       destinationStop: progress.request.destinationStop,
       servedByRoute: progress.request.servedByRoute,
     }));
@@ -160,11 +166,11 @@ export class RideSession {
     );
   }
 
-  #completeDelivery(request: RideRequest): number {
-    const fare = requestFare(request);
-    this.#setStatus(request.id, 'delivered');
+  #completeDelivery(progress: RequestProgress): number {
+    const fare = progress.agreedFare?.total ?? 0;
+    this.#setStatus(progress.request.id, 'delivered');
     this.#deliveredRevenue += fare;
-    if (request.servedByRoute) this.#deliveredCount += 1;
+    if (progress.request.servedByRoute) this.#deliveredCount += 1;
     return fare;
   }
 }

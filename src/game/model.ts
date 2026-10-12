@@ -1,7 +1,6 @@
 import { PART_CATALOG, type PartKind } from '../data/parts';
 
 export const INITIAL_WALLET = 100;
-export const SELL_REFUND_RATE = 0.7;
 export const DRIVER_SEAT_ID = 'seat-1';
 export const DRIVER_MASS_KG = 70;
 export const BASE_ENGINE_FORCE_N = 3000;
@@ -242,8 +241,9 @@ export function clearOptionalParts(model: GameModel): GameModel {
   };
 }
 
-export function returnPurchase(model: GameModel, kind: PartKind): GameModel {
-  if (model.pendingPurchases[kind] < 1) throw new Error('No hay una compra reciente para devolver.');
+export function refundPart(model: GameModel, kind: PartKind): GameModel {
+  const minimum = createInitialGameModel().ownedParts[kind];
+  if (model.ownedParts[kind] <= minimum) throw new Error('El kit básico no se puede reembolsar.');
   const placed = model.workshopGrid
     ? model.workshopGrid.filter((item) => item.kind === kind).length
     : Object.values(model.workshopBuild).filter((placedKind) => placedKind === kind).length;
@@ -251,21 +251,6 @@ export function returnPurchase(model: GameModel, kind: PartKind): GameModel {
   return {
     ...model,
     wallet: model.wallet + priceOf(kind),
-    ownedParts: { ...model.ownedParts, [kind]: model.ownedParts[kind] - 1 },
-    pendingPurchases: { ...model.pendingPurchases, [kind]: model.pendingPurchases[kind] - 1 },
-  };
-}
-
-export function sellPart(model: GameModel, kind: PartKind): GameModel {
-  const minimum = createInitialGameModel().ownedParts[kind];
-  if (model.ownedParts[kind] <= minimum) throw new Error('El kit básico no se puede vender.');
-  const placed = model.workshopGrid
-    ? model.workshopGrid.filter((item) => item.kind === kind).length
-    : Object.values(model.workshopBuild).filter((placedKind) => placedKind === kind).length;
-  if (placed >= model.ownedParts[kind]) throw new Error('Retira primero una pieza colocada.');
-  return {
-    ...model,
-    wallet: model.wallet + Math.round(priceOf(kind) * SELL_REFUND_RATE),
     ownedParts: { ...model.ownedParts, [kind]: model.ownedParts[kind] - 1 },
     pendingPurchases: model.pendingPurchases[kind] > 0
       ? { ...model.pendingPurchases, [kind]: model.pendingPurchases[kind] - 1 }

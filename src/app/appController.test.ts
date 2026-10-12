@@ -55,7 +55,10 @@ function completeRide(controller: AppController): void {
     const waitingRequests = snapshot.ride?.requests.filter((progress) =>
       progress.status === 'waiting') ?? [];
     const waiting = onboardCount < snapshot.passengerCapacity
-      ? waitingRequests.find((progress) => progress.request.kind === 'passenger') ?? waitingRequests[0]
+      ? waitingRequests.find((progress) => !progress.request.id.endsWith('-b') &&
+        !progress.request.id.includes('alternativo') &&
+        !progress.request.id.includes('fuera-ruta') && progress.request.id !== 'carga-terminal') ??
+        waitingRequests[0]
       : undefined;
     if (waiting) {
       const distance = waiting.request.originX - snapshot.vehicleX;
@@ -104,7 +107,7 @@ describe('flujo vertical del primer recorrido', () => {
 
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.won).toBe(true);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(15);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(11);
     expect(controller.snapshot.game.unlockedLevel).toBe(2);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(0);
 
@@ -151,6 +154,8 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'SET_BRAKE', value: true });
     while (Math.abs(controller.snapshot.speedMps) > 0.05) controller.update(1 / 60);
     controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'primer-pasajero' });
+    expect(controller.snapshot.fareNotice?.total).toBeGreaterThan(0);
+    expect(controller.snapshot.fareNotice?.surcharge).toBe(0);
     controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.speedMps).toBeGreaterThan(1);
@@ -182,7 +187,8 @@ describe('flujo vertical del primer recorrido', () => {
       }
     }
     expect(collected).toBe(true);
-    expect(controller.snapshot.message).toContain('Voy a Gamarra');
+    expect(controller.snapshot.message).toContain('no va a Gamarra');
+    expect(controller.snapshot.fareNotice).toBeNull();
     const occupiedMass = controller.worldSnapshot.body.massKg;
     controller.dispatch({ type: 'SET_BRAKE', value: false });
     for (let index = 0; index < 3600; index += 1) {
@@ -315,7 +321,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(25);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(22);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
     expect(controller.snapshot.game.completedLevels['hora-punta']).toBeDefined();

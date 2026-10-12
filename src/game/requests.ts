@@ -12,8 +12,6 @@ export interface RideRequest {
   readonly kind: RequestKind;
   readonly massKg: number;
   readonly requiredCapacity: number;
-  readonly baseFare: number;
-  readonly distanceFare: number;
   readonly visualVariant: string;
   readonly attendantVariant: string;
   readonly cargoMassKg: number;
@@ -22,6 +20,13 @@ export interface RideRequest {
 
 const PEOPLE_VARIANTS = ['azul', 'rojo', 'verde', 'amarillo'] as const;
 const CARGO_VARIANTS = ['cajas', 'canastas', 'sacos'] as const;
+export const CARGO_SURCHARGE = 2;
+
+export interface FareQuote {
+  readonly baseFare: number;
+  readonly surcharge: number;
+  readonly total: number;
+}
 
 export function generateLevelOneRequests(seed: string): readonly RideRequest[] {
   return generateRequests('primer-recorrido', seed);
@@ -100,9 +105,16 @@ export function generateRequests(levelId: string, seed: string): readonly RideRe
   ];
 }
 
-export function requestFare(request: RideRequest): number {
-  if (!request.servedByRoute) return 0;
-  return request.baseFare + request.distanceFare;
+export function requestFareQuote(request: RideRequest, pickupX: number): FareQuote {
+  if (!Number.isFinite(pickupX)) throw new Error('La posición de recogida debe ser válida.');
+  if (!request.servedByRoute) return { baseFare: 0, surcharge: 0, total: 0 };
+  const baseFare = fareForDistance(Math.max(0, request.destinationX - pickupX));
+  const surcharge = request.kind === 'passenger' ? 0 : CARGO_SURCHARGE;
+  return { baseFare, surcharge, total: baseFare + surcharge };
+}
+
+export function requestFare(request: RideRequest, pickupX = request.originX): number {
+  return requestFareQuote(request, pickupX).total;
 }
 
 function passengerRequest(
@@ -113,15 +125,12 @@ function passengerRequest(
   destinationX: number,
   random: () => number,
 ): RideRequest {
-  const fare = fareForRoute(originX, destinationX);
   const visualVariant = pick(PEOPLE_VARIANTS, random);
   return {
     id, originStop, destinationStop, originX, destinationX,
     kind: 'passenger',
     massKg: 58 + Math.floor(random() * 20),
     requiredCapacity: 1,
-    baseFare: 1,
-    distanceFare: fare - 1,
     visualVariant,
     attendantVariant: visualVariant,
     cargoMassKg: 0,
@@ -143,8 +152,6 @@ function offRoutePassengerRequest(
     kind: 'passenger',
     massKg: 58 + Math.floor(random() * 20),
     requiredCapacity: 1,
-    baseFare: 0,
-    distanceFare: 0,
     visualVariant,
     attendantVariant: visualVariant,
     cargoMassKg: 0,
@@ -161,7 +168,6 @@ function cargoRequestForRoute(
   kind: Exclude<RequestKind, 'passenger'>,
   random: () => number,
 ): RideRequest {
-  const fare = fareForRoute(originX, destinationX);
   const cargoMassKg = 24 + Math.floor(random() * 27);
   const attendantMassKg = 55 + Math.floor(random() * 20);
   return {
@@ -169,8 +175,6 @@ function cargoRequestForRoute(
     kind,
     massKg: cargoMassKg + attendantMassKg,
     requiredCapacity: 1,
-    baseFare: 1,
-    distanceFare: fare - 1,
     visualVariant: pick(CARGO_VARIANTS, random),
     attendantVariant: pick(PEOPLE_VARIANTS, random),
     cargoMassKg,
@@ -183,8 +187,12 @@ function offRouteExitX(originX: number, finishX: number, randomValue: number): n
   return originX + remainingDistance * (0.3 + randomValue * 0.45);
 }
 
-function fareForRoute(originX: number, destinationX: number): number {
-  return Math.max(1, Math.min(5, Math.ceil((destinationX - originX) / 3)));
+function fareForDistance(distance: number): number {
+  if (distance <= 8) return 1;
+  if (distance <= 16) return 2;
+  if (distance <= 25) return 3;
+  if (distance <= 35) return 4;
+  return 5;
 }
 
 function pick<T>(values: readonly T[], random: () => number): T {

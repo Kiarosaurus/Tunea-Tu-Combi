@@ -15,8 +15,7 @@ import {
   placePart,
   removePart,
   removeGridPart,
-  returnPurchase,
-  sellPart,
+  refundPart,
   validateBuild,
 } from './model';
 
@@ -38,9 +37,9 @@ describe('taller y economía', () => {
     expect(purchased.wallet).toBe(initial.wallet - 15);
     const placed = placePart(purchased, 'seat', 'passengerSeat');
     expect(passengerCapacity(placed.workshopBuild)).toBe(1);
-    expect(() => returnPurchase(placed, 'seat')).toThrow('Retira primero');
+    expect(() => refundPart(placed, 'seat')).toThrow('Retira primero');
     const removed = removePart(placed, 'passengerSeat');
-    const refunded = returnPurchase(removed, 'seat');
+    const refunded = refundPart(removed, 'seat');
     expect(refunded.wallet).toBe(initial.wallet);
     expect(refunded.ownedParts.seat).toBe(1);
     expect(initial.ownedParts.seat).toBe(1);
@@ -64,7 +63,7 @@ describe('taller y economía', () => {
     expect(gridForModel(moved).find((item) => item.id === DRIVER_SEAT_ID)).toMatchObject({
       column: 4, row: 1,
     });
-    expect(() => sellPart(initial, 'wheel')).toThrow('kit básico');
+    expect(() => refundPart(initial, 'wheel')).toThrow('kit básico');
   });
 
   it('permite posiciones libres, evita solapamientos y detecta piezas sueltas', () => {
@@ -89,21 +88,21 @@ describe('taller y economía', () => {
     expect(() => moveGridPart(moved, 'engine-1', 3, 3)).toThrow('ocupado');
   });
 
-  it('vende una pieza usada libre con reembolso parcial', () => {
+  it('reembolsa por completo una pieza adicional libre', () => {
     const initial = createInitialGameModel();
     const purchased = buyPart(initial, 'seat');
     const used = { ...purchased, pendingPurchases: { ...purchased.pendingPurchases, seat: 0 } };
-    const sold = sellPart(used, 'seat');
-    expect(sold.wallet).toBe(initial.wallet - 15 + 11);
+    const refunded = refundPart(used, 'seat');
+    expect(refunded.wallet).toBe(initial.wallet);
   });
 
-  it('vende una compra reciente con depreciación y cancela su estado pendiente', () => {
+  it('reembolsa una compra reciente y cancela su estado pendiente', () => {
     const initial = createInitialGameModel();
     const purchased = buyPart(initial, 'seat');
-    const sold = sellPart(purchased, 'seat');
-    expect(sold.wallet).toBe(initial.wallet - 15 + 11);
-    expect(sold.ownedParts.seat).toBe(1);
-    expect(sold.pendingPurchases.seat).toBe(0);
+    const refunded = refundPart(purchased, 'seat');
+    expect(refunded.wallet).toBe(initial.wallet);
+    expect(refunded.ownedParts.seat).toBe(1);
+    expect(refunded.pendingPurchases.seat).toBe(0);
   });
 
   it('calcula masa y centro de gravedad de una construcción conocida', () => {

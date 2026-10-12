@@ -1039,7 +1039,7 @@ button:focus-visible {
   min-width: 0;
 }
 
-.part-sell-action {
+.part-refund-action {
   min-height: 1.8rem;
   border: 1px solid rgba(255, 245, 217, 0.38);
   border-radius: 0.55rem;

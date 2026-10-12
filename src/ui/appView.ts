@@ -7,7 +7,6 @@ import {
   BUILD_GRID_ROWS,
   DRIVER_SEAT_ID,
   PART_FOOTPRINTS,
-  SELL_REFUND_RATE,
   createInitialGameModel,
   gridBuildStats,
   gridForModel,
@@ -601,7 +600,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const baseInventory = createInitialGameModel().ownedParts;
   for (const part of PART_CATALOG.filter((item) => item.kind !== 'chassis')) {
     const available = freeCount(part.kind);
-    const canSell = available > 0 && snapshot.game.ownedParts[part.kind] > baseInventory[part.kind];
+    const canRefund = available > 0 && snapshot.game.ownedParts[part.kind] > baseInventory[part.kind];
     const card = document.createElement('div');
     card.className = 'part-card-wrap';
     const button = actionButton('', 'part-card', () => {
@@ -632,14 +631,13 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     if (available > 0) attachPointerDrag(button, part.kind);
     inventoryButtons.push(button);
     card.append(button);
-    if (canSell) {
-      const resale = Math.round(part.price * SELL_REFUND_RATE);
-      const sell = actionButton(`Vender S/ ${resale}`, 'part-sell-action', () => {
+    if (canRefund) {
+      const refund = actionButton(`Reembolsar S/ ${part.price}`, 'part-refund-action', () => {
         workshopUi.selectedPart = null;
-        dispatch({ type: 'SELL_PART', kind: part.kind });
+        dispatch({ type: 'REFUND_PART', kind: part.kind });
       });
-      sell.setAttribute('aria-label', `Vender ${part.name} libre por S/ ${resale}`);
-      card.append(sell);
+      refund.setAttribute('aria-label', `Reembolsar ${part.name} libre por S/ ${part.price}`);
+      card.append(refund);
     }
     trayGrid.append(card);
   }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../data/levels';
 import { routeSegmentForStop } from '../data/transitRoute';
-import { generateLevelOneRequests, generateRequests, requestFare } from './requests';
+import { CARGO_SURCHARGE, generateLevelOneRequests, generateRequests, requestFare,
+  requestFareQuote } from './requests';
 
 describe('generación de solicitudes', () => {
   it('repite exactamente la secuencia para una misma semilla', () => {
@@ -26,7 +27,7 @@ describe('generación de solicitudes', () => {
       expect(request.massKg).toBeGreaterThan(0);
       expect(request.requiredCapacity).toBeGreaterThan(0);
       expect(requestFare(request)).toBeGreaterThanOrEqual(0);
-      expect(requestFare(request)).toBeLessThanOrEqual(5);
+      expect(requestFare(request)).toBeLessThanOrEqual(7);
       expect(request.attendantVariant).toBeTruthy();
       if (request.kind !== 'passenger') {
         expect(request.cargoMassKg).toBeGreaterThan(0);
@@ -93,6 +94,22 @@ describe('generación de solicitudes', () => {
       expect(request?.kind).toBe('passenger');
       if (request) expect(requestFare(request)).toBe(0);
     }
+  });
+
+  it('cotiza por distancia restante y suma un recargo fijo a la carga', () => {
+    const requests = generateLevelOneRequests('primer-recorrido-base');
+    const passenger = requests.find((request) => request.id === 'tercer-pasajero');
+    const cargo = requests.find((request) => request.id === 'carga-terminal');
+    expect(passenger).toBeDefined();
+    expect(cargo).toBeDefined();
+    if (!passenger || !cargo) return;
+    const early = requestFareQuote(passenger, passenger.originX);
+    const late = requestFareQuote(passenger, passenger.destinationX - 4);
+    expect(early.total).toBeGreaterThan(late.total);
+    expect(late.total).toBe(1);
+    const cargoQuote = requestFareQuote(cargo, cargo.originX);
+    expect(cargoQuote.surcharge).toBe(CARGO_SURCHARGE);
+    expect(cargoQuote.total).toBe(cargoQuote.baseFare + CARGO_SURCHARGE);
   });
 
   it('cubre las cuotas de pista dañada y hora punta con todos los soportes', () => {

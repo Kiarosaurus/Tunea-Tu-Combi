@@ -103,10 +103,10 @@ BOOT -> MENU -> LEVEL_SELECT -> WORKSHOP -> PLAYING -> PAUSED -> RESULTS
 La interfaz recorre todos esos estados durante la campaña completa. Cada nivel
 abre una cuadrícula con el asiento fijo del conductor, entrega el resto del kit
 gratuito en la paleta y asigna un presupuesto fijo de construcción. El asiento
-del conductor se puede mover, pero no retirar ni vender. Las piezas adicionales
-libres se venden por el 70 % de su precio.
+del conductor se puede mover, pero no retirar ni reembolsar. Las piezas adicionales
+libres se reembolsan por su precio completo.
 Para transportar un pasajero hace falta un segundo asiento. Las compras se hacen
-desde la misma paleta de piezas y las unidades libres pueden venderse antes del recorrido.
+desde la misma paleta de piezas y las unidades libres pueden reembolsarse antes del recorrido.
 
 En el taller, las piezas se arrastran desde el inventario hacia la cuadrícula y
 pueden moverse entre celdas. La franja coloreada representa el chasis que
@@ -135,13 +135,15 @@ aparece junto a su responsable, requiere además un asiento libre y se recoge
 directamente en la pista. Persona y objeto permanecen visibles al viajar. Cada
 persona ocupa la posición de su asiento; su masa e inercia se agregan mientras
 está a bordo y pueden inclinar o volcar la combi. Una carga se pierde si rompe su
-unión. Las tarifas están entre S/ 1 y S/ 5 según la distancia y las cuotas se
-ajustan a esos importes. El dinero entregado determina hasta tres estrellas,
+unión. La tarifa se acuerda al recoger según la distancia que falta hasta el
+destino: va de S/ 1 a S/ 5 y cada carga añade S/ 2. El cobro aparece brevemente
+sobre la combi, no antes de recoger. Las cuotas se ajustan a esos importes.
+El dinero entregado determina hasta tres estrellas,
 pero no se acumula como saldo. Solo tres estrellas desbloquean la siguiente ruta.
 
 La franja superior resume la ruta CR27 Comas - S.M.P. mediante una selección
 de paraderos limeños, muestra el avance de la combi, la capacidad ocupada y
-fichas mínimas de los pasajeros a bordo con destino, masa y tarifa.
+fichas mínimas de los pasajeros a bordo con destino y masa.
 El cronómetro, dinero, velocidad, salud del motor, pausa y controles de conducción flotan como
 instrumentos independientes sobre la escena en lugar de ocupar un panel lateral.
 Los golpes de carrocería contra la pista reducen el motor en 25 % y el arrastre

@@ -20,8 +20,7 @@ import {
   vehicleCapacity,
   placePart,
   removePart,
-  returnPurchase,
-  sellPart,
+  refundPart,
   validateBuild,
   validateGridBuild,
   type AnchorId,
@@ -29,7 +28,7 @@ import {
 } from '../game/model';
 import { applyRideResult, hasReachedDestination, RideSession,
   type RideSnapshot } from '../game/rideSession';
-import { generateRequests } from '../game/requests';
+import { generateRequests, type FareQuote } from '../game/requests';
 import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
 import { ARREST_X } from '../game/roadLimits';
@@ -49,8 +48,7 @@ export type AppAction =
   | { readonly type: 'PLACE_GRID_PART'; readonly kind: PartKind; readonly column: number; readonly row: number }
   | { readonly type: 'MOVE_GRID_PART'; readonly placementId: string; readonly column: number; readonly row: number }
   | { readonly type: 'REMOVE_GRID_PART'; readonly placementId: string }
-  | { readonly type: 'RETURN_PURCHASE'; readonly kind: PartKind }
-  | { readonly type: 'SELL_PART'; readonly kind: PartKind }
+  | { readonly type: 'REFUND_PART'; readonly kind: PartKind }
   | { readonly type: 'CLEAR_OPTIONAL_PARTS' }
   | { readonly type: 'START_RIDE' }
   | { readonly type: 'SET_THROTTLE'; readonly value: -1 | 0 | 1 }
@@ -88,6 +86,7 @@ export interface AppSnapshot {
   readonly brakeEffectivenessPercent: number;
   readonly engineExploded: boolean;
   readonly saveRecovered: boolean;
+  readonly fareNotice: FareQuote | null;
 }
 
 export class AppController {
@@ -113,6 +112,8 @@ export class AppController {
   #explosionRemainingSeconds = 0;
   #chassisContactActive = false;
   #uiElapsed = 0;
+  #fareNotice: FareQuote | null = null;
+  #fareNoticeRemainingSeconds = 0;
 
   constructor(repository: LocalSaveRepository) {
     this.#repository = repository;
@@ -154,6 +155,7 @@ export class AppController {
       brakeEffectivenessPercent: this.#braking ? Math.round(this.#brakeStrength * 100) : 0,
       engineExploded: this.#engineExploded,
       saveRecovered: this.#repository.recovered,
+      fareNotice: this.#fareNotice,
     };
   }
 
@@ -173,6 +175,9 @@ export class AppController {
   update(durationSeconds: number): void {
     if (this.#machine.state === 'PAUSED' || this.#machine.state === 'RESULTS') return;
     if (this.#machine.state === 'PLAYING' && this.#ride) {
+      this.#fareNoticeRemainingSeconds = Math.max(0,
+        this.#fareNoticeRemainingSeconds - durationSeconds);
+      if (this.#fareNoticeRemainingSeconds === 0) this.#fareNotice = null;
       if (this.#engineExploded) {
         this.#explosionRemainingSeconds = Math.max(0, this.#explosionRemainingSeconds - durationSeconds);
         if (this.#explosionRemainingSeconds === 0) this.#machine.transition('RESULTS');
@@ -307,11 +312,8 @@ export class AppController {
       case 'REMOVE_GRID_PART':
         this.#mutateModel(removeGridPart(this.#model, action.placementId));
         return;
-      case 'RETURN_PURCHASE':
-        this.#mutateModel(returnPurchase(this.#model, action.kind));
-        return;
-      case 'SELL_PART':
-        this.#mutateModel(sellPart(this.#model, action.kind));
+      case 'REFUND_PART':
+        this.#mutateModel(refundPart(this.#model, action.kind));
         return;
       case 'CLEAR_OPTIONAL_PARTS':
         this.#mutateModel(clearOptionalParts(this.#model));
@@ -457,6 +459,8 @@ export class AppController {
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
+    this.#fareNotice = null;
+    this.#fareNoticeRemainingSeconds = 0;
     const wheelCount = stats.wheelOffsets?.length ?? 0;
     this.#message = stats.loosePieces
       ? `${stats.loosePieces} pieza${stats.loosePieces === 1 ? '' : 's'} sin conexión cay${stats.loosePieces === 1 ? 'ó' : 'eron'} dentro y no funciona${stats.loosePieces === 1 ? '' : 'n'}.`
@@ -486,7 +490,7 @@ export class AppController {
       throw new Error('El soporte de esta carga está roto. Reinicia o vuelve al taller.');
     }
     const world = this.#world.snapshot();
-    this.#ride.collect(requestId, world.body.position.x, world.body.velocity.x,
+    const fareQuote = this.#ride.collect(requestId, world.body.position.x, world.body.velocity.x,
       this.#model.workshopGrid
         ? gridVehicleCapacity(gridForModel(this.#model))
         : vehicleCapacity(this.#model.workshopBuild));
@@ -510,8 +514,14 @@ export class AppController {
           passengerPayloadOffset(centerOfMass, seatPosition));
       }
     }
+    if (request?.servedByRoute) {
+      this.#fareNotice = fareQuote;
+      this.#fareNoticeRemainingSeconds = 1.8;
+    }
     this.#message = request?.kind === 'passenger'
-      ? `Pasajero: "Voy a ${request.destinationStop}".`
+      ? request.servedByRoute
+        ? `Pasajero: "Voy a ${request.destinationStop}".`
+        : `Esta combi no va a ${request.destinationStop}. Me bajaré luego.`
       : 'Carga asegurada. Llévala a su destino.';
     this.#notify();
   }

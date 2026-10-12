@@ -16,7 +16,6 @@ import {
   type GridPlacement,
 } from '../game/model';
 import { PICKUP_MAX_SPEED_MPS, REQUEST_NOTICE_RADIUS_METERS, STOP_RADIUS_METERS } from '../game/rideSession';
-import { requestFare } from '../game/requests';
 import { POLICE_CAR_X } from '../game/roadLimits';
 import type { WorldSnapshot } from '../physics/world';
 
@@ -100,6 +99,9 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.passengerCapacity = String(snapshot.passengerCapacity);
       canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
       canvas.dataset.engineExploded = String(snapshot.engineExploded);
+      canvas.dataset.fareNotice = JSON.stringify(snapshot.fareNotice);
+      canvas.dataset.fareNoticeLabel = snapshot.fareNotice
+        ? formatFareNotice(snapshot.fareNotice) : '';
       const onboardDestination = snapshot.ride?.requests.find((progress) =>
         progress.status === 'onboard')?.request.destinationX;
       canvas.dataset.onboardDestinationX = onboardDestination === undefined ? '' : onboardDestination.toFixed(3);
@@ -125,6 +127,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
           id: progress.request.id,
           originX: progress.request.originX,
           destinationStop: progress.request.destinationStop,
+          kind: progress.request.kind,
           servedByRoute: progress.request.servedByRoute,
           markerColor: PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR,
         })) ?? []);
@@ -160,6 +163,7 @@ function draw(
   drawPoliceBarrier(context, width, height, snapshot, world);
   if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot, world);
   drawCombi(context, width, height, snapshot, world);
+  drawFareNotice(context, width, height, snapshot, world);
   const requestHitAreas = drawWaitingRequests(context, width, height, snapshot, world);
   if (snapshot.debugEnabled) drawDebug(context, width, height, world);
   return requestHitAreas;
@@ -277,14 +281,14 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   for (const passenger of onboard) {
     drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
       passenger.request.destinationStop, passenger.request.destinationX, snapshot.vehicleX,
-      passenger.request.massKg, requestFare(passenger.request), passenger.request.servedByRoute);
+      passenger.request.massKg, passenger.request.servedByRoute);
     cardX += 154;
   }
   if (nextRequest) {
     context.textAlign = 'right';
     context.fillStyle = '#fff5d9';
     context.font = '900 13px system-ui';
-    context.fillText(`S/ ${requestFare(nextRequest.request)}`, right - 18, cardY + 14);
+    context.fillText(`A ${shortStopName(nextRequest.request.destinationStop)}`, right - 18, cardY + 14);
   }
   context.restore();
 }
@@ -304,7 +308,7 @@ function drawRouteCombiIcon(context: CanvasRenderingContext2D, x: number, y: num
 
 function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: number,
   variant: string, destination: string, destinationX: number, vehicleX: number,
-  massKg: number, fare: number, servedByRoute: boolean): void {
+  massKg: number, servedByRoute: boolean): void {
   context.fillStyle = 'rgba(255,255,255,0.08)';
   roundedRect(context, x, y - 17, 145, 34, 8);
   context.fill();
@@ -321,8 +325,8 @@ function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: numb
   context.font = '700 8px system-ui';
   const remainingMeters = Math.max(0, Math.ceil(destinationX - vehicleX));
   const detail = servedByRoute
-    ? `${remainingMeters} m  ${massKg} kg  S/ ${fare}`
-    : `FUERA DE RUTA  ${remainingMeters} m  S/ 0`;
+    ? `${remainingMeters} m  ${massKg} kg`
+    : `RUTA INCORRECTA  ${remainingMeters} m`;
   context.fillText(detail, x + 31, y + 10);
 }
 
@@ -352,10 +356,7 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     context.fillStyle = nearby ? '#fff5d9' : 'rgba(255,255,255,0.72)';
     context.font = '800 10px system-ui';
     context.textAlign = 'center';
-    context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -97);
-    context.font = '900 9px system-ui';
-    context.fillText(progress.request.servedByRoute
-      ? `S/ ${requestFare(progress.request)}` : '¿ESTA RUTA?', 0, -83);
+    context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -90);
     const occupiedSupport = onboardRequests.filter((item) =>
       item.request.kind === progress.request.kind).length;
     const missingRequirement = requestRequirement(progress.request.kind, capacity,
@@ -630,6 +631,33 @@ function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: 
     context.fill();
   }
   context.restore();
+}
+
+function drawFareNotice(context: CanvasRenderingContext2D, width: number, height: number,
+  snapshot: AppSnapshot, world: WorldSnapshot): void {
+  if (!snapshot.fareNotice || snapshot.fareNotice.total <= 0) return;
+  const point = worldToScreen(world.body.position, world, width, height);
+  const label = formatFareNotice(snapshot.fareNotice);
+  context.save();
+  context.font = '900 15px system-ui';
+  const labelWidth = context.measureText(label).width + 24;
+  context.fillStyle = 'rgba(5, 20, 31, 0.92)';
+  roundedRect(context, point.x - labelWidth / 2, point.y - 122, labelWidth, 32, 10);
+  context.fill();
+  context.strokeStyle = '#f2c14e';
+  context.lineWidth = 2;
+  context.stroke();
+  context.fillStyle = '#fff5d9';
+  context.textAlign = 'center';
+  context.fillText(label, point.x, point.y - 101);
+  context.restore();
+}
+
+function formatFareNotice(fare: { readonly baseFare: number; readonly surcharge: number;
+  readonly total: number }): string {
+  return fare.surcharge > 0
+    ? `S/ ${fare.baseFare} + S/ ${fare.surcharge} = +S/ ${fare.total}`
+    : `+S/ ${fare.total}`;
 }
 
 function drawTerrain(
