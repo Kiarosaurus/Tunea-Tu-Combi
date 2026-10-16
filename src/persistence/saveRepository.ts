@@ -150,7 +150,10 @@ function isGrid(value: unknown, inventory?: Inventory): value is readonly GridPl
     const kind = item.kind as PartKind;
     const column = item.column as number;
     const row = item.row as number;
-    const footprint = PART_FOOTPRINTS[kind];
+    // Los guardados anteriores usaban una parrilla horizontal de 3 x 1.
+    const footprint = kind === 'roofRack' && item.row !== 0
+      ? { columns: 3, rows: 1 }
+      : PART_FOOTPRINTS[kind];
     if (column < 0 || row < 0 || column + footprint.columns > BUILD_GRID_COLUMNS ||
       row + footprint.rows > BUILD_GRID_ROWS) return false;
     for (let cellRow = row; cellRow < row + footprint.rows; cellRow += 1) {

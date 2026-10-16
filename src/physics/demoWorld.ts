@@ -119,7 +119,7 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
   const joints: JointMount[] = [];
   const threshold = equipment.reinforcedSuspension ? 12000 : 6000;
   if (equipment.roofRack) joints.push({ id: 'roofRack',
-    offset: { x: -centerOfMass.x, y: 0.75 - centerOfMass.y },
+    offset: { x: -1.05 - centerOfMass.x, y: 0.75 - centerOfMass.y },
     massKg: partMass('roofRack'), breakImpulseNs: threshold });
   if (equipment.rearCarrier) joints.push({ id: 'rearCarrier',
     offset: { x: -1.7 - centerOfMass.x, y: -centerOfMass.y },

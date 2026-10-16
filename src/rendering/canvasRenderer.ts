@@ -374,13 +374,11 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     context.globalAlpha = nearby ? 1 : 0.58;
     context.translate(point.x, point.y);
     context.fillStyle = 'rgba(5, 20, 31, 0.88)';
-    roundedRect(context, -62, -124, 124, 50, 9);
+    roundedRect(context, -56, -112, 112, 38, 9);
     context.fill();
     context.fillStyle = nearby ? '#fff5d9' : 'rgba(255,255,255,0.72)';
-    context.font = '900 8px system-ui';
-    context.textAlign = 'center';
-    context.fillText(requestTypeLabel(progress.request.kind), 0, -109);
     context.font = '800 10px system-ui';
+    context.textAlign = 'center';
     context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -91);
     const occupiedSupport = onboardRequests.filter((item) =>
       item.request.kind === progress.request.kind).length;
@@ -430,12 +428,6 @@ function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
   }
   if (nearby && Math.abs(speedMps) > PICKUP_MAX_SPEED_MPS) return 'FRENA';
   return null;
-}
-
-function requestTypeLabel(kind: 'passenger' | 'roofCargo' | 'scooter'): string {
-  if (kind === 'roofCargo') return 'BULTO: PARRILLA + ASIENTO';
-  if (kind === 'scooter') return 'SCOOTER: PORTACARGA + ASIENTO';
-  return 'PASAJERO: ASIENTO';
 }
 
 function drawWaitingPerson(context: CanvasRenderingContext2D, x: number, clothing: string): void {
@@ -806,40 +798,40 @@ function drawCombi(
 
 const MENU_SHOWCASE_BUILDS: readonly (readonly GridPlacement[])[] = [
   [
-    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 8, row: 3 },
     { id: 'menu-wheel-a1', kind: 'wheel', column: 1, row: 5 },
     { id: 'menu-wheel-a2', kind: 'wheel', column: 7, row: 5 },
-    { id: 'menu-engine-a', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-engine-a', kind: 'engine', column: 6, row: 3 },
     { id: 'menu-seat-a', kind: 'seat', column: 5, row: 3 },
   ],
   [
-    { id: DRIVER_SEAT_ID, kind: 'seat', column: 2, row: 3 },
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 8, row: 3 },
     { id: 'menu-wheel-b1', kind: 'wheel', column: 1, row: 5 },
     { id: 'menu-wheel-b2', kind: 'wheel', column: 7, row: 5 },
-    { id: 'menu-engine-b', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-engine-b', kind: 'engine', column: 6, row: 3 },
     { id: 'menu-seat-b1', kind: 'seat', column: 4, row: 3 },
     { id: 'menu-seat-b2', kind: 'seat', column: 5, row: 3 },
     { id: 'menu-seat-b3', kind: 'seat', column: 6, row: 3 },
     { id: 'menu-suspension-b', kind: 'suspension', column: 4, row: 5 },
   ],
   [
-    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 8, row: 3 },
     { id: 'menu-wheel-c1', kind: 'wheel', column: 1, row: 5 },
     { id: 'menu-wheel-c2', kind: 'wheel', column: 7, row: 5 },
     { id: 'menu-engine-c', kind: 'engine', column: 6, row: 3 },
     { id: 'menu-seat-c1', kind: 'seat', column: 4, row: 3 },
     { id: 'menu-seat-c2', kind: 'seat', column: 5, row: 3 },
-    { id: 'menu-roof-c', kind: 'roofRack', column: 3, row: 1 },
+    { id: 'menu-roof-c', kind: 'roofRack', column: 1, row: 0 },
   ],
   [
-    { id: DRIVER_SEAT_ID, kind: 'seat', column: 2, row: 3 },
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 8, row: 3 },
     { id: 'menu-wheel-d1', kind: 'wheel', column: 1, row: 5 },
     { id: 'menu-wheel-d2', kind: 'wheel', column: 7, row: 5 },
-    { id: 'menu-engine-d', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-engine-d', kind: 'engine', column: 6, row: 3 },
     { id: 'menu-seat-d1', kind: 'seat', column: 4, row: 3 },
     { id: 'menu-seat-d2', kind: 'seat', column: 5, row: 3 },
     { id: 'menu-seat-d3', kind: 'seat', column: 6, row: 3 },
-    { id: 'menu-roof-d', kind: 'roofRack', column: 3, row: 1 },
+    { id: 'menu-roof-d', kind: 'roofRack', column: 1, row: 0 },
     { id: 'menu-carrier-d', kind: 'rearCarrier', column: 0, row: 4 },
     { id: 'menu-suspension-d', kind: 'suspension', column: 4, row: 5 },
   ],
@@ -939,7 +931,7 @@ function drawOnboardRequests(context: CanvasRenderingContext2D, snapshot: AppSna
     drawSeatedPerson(context, position.x, position.y, bodyWidth, bodyHeight,
       clothing[progress.request.attendantVariant] ?? '#62b7ff');
     if (progress.request.kind === 'roofCargo') {
-      const cargoX = bodyX + bodyWidth * 0.44;
+      const cargoX = bodyX + bodyWidth * 0.12;
       const cargoY = bodyY - bodyHeight * 0.18;
       context.fillStyle = progress.request.visualVariant === 'sacos' ? '#d0bd86' : '#b86b45';
       roundedRect(context, cargoX, cargoY, bodyWidth * 0.22, bodyHeight * 0.22, 4);
@@ -1091,21 +1083,36 @@ function drawInstalledParts(
     } else if (placement.kind === 'roofRack') {
       context.strokeStyle = '#f2c14e';
       context.lineWidth *= 1.6;
-      context.strokeRect(x + 2, y + height * 0.2, width - 4, height * 0.52);
-      for (let bar = 1; bar < 4; bar += 1) {
-        const barX = x + (width * bar) / 4;
-        context.beginPath();
-        context.moveTo(barX, y + height * 0.2);
-        context.lineTo(barX, y + height * 0.72);
-        context.stroke();
-      }
-    } else if (placement.kind === 'rearCarrier') {
-      roundedRect(context, x + 1, y + height * 0.15, width - 2, height * 0.66, 3);
+      const rackX = x + width * 0.24;
+      context.beginPath();
+      context.moveTo(rackX, y + height * 0.08);
+      context.lineTo(rackX, y + height * 0.92);
+      context.moveTo(rackX, y + height * 0.28);
+      context.lineTo(x + width * 0.76, y + height * 0.28);
+      context.moveTo(rackX, y + height * 0.78);
+      context.lineTo(x + width * 0.76, y + height * 0.78);
+      context.stroke();
+      context.fillStyle = '#d9edf1';
+      roundedRect(context, x + width * 0.42, y + height * 0.18,
+        width * 0.42, height * 0.66, 3);
       context.fill();
+      context.strokeStyle = '#315e83';
       context.stroke();
       context.beginPath();
-      context.moveTo(x + width, y + height * 0.48);
-      context.lineTo(x + width * 1.22, y + height * 0.48);
+      context.moveTo(x + width * 0.44, y + height * 0.43);
+      context.lineTo(x + width * 0.82, y + height * 0.43);
+      context.stroke();
+    } else if (placement.kind === 'rearCarrier') {
+      context.strokeStyle = '#d6d8d5';
+      context.lineWidth *= 1.3;
+      context.beginPath();
+      context.arc(x + width * 0.23, y + height * 0.7, height * 0.2, 0, Math.PI * 2);
+      context.arc(x + width * 0.75, y + height * 0.7, height * 0.2, 0, Math.PI * 2);
+      context.moveTo(x + width * 0.23, y + height * 0.7);
+      context.lineTo(x + width * 0.45, y + height * 0.3);
+      context.lineTo(x + width * 0.75, y + height * 0.7);
+      context.moveTo(x + width * 0.45, y + height * 0.3);
+      context.lineTo(x + width * 0.76, y + height * 0.28);
       context.stroke();
     } else if (placement.kind === 'suspension') {
       context.strokeStyle = secured ? '#62b7ff' : '#ff8066';
@@ -1153,15 +1160,16 @@ export function loosePartPose(id: string, startX: number, startY: number,
   const rawProgress = Math.max(0, Math.min(1, elapsed / fallDuration));
   const progress = 1 - (1 - rawProgress) ** 3;
   const floorY = insetY + innerHeight - height - 2 - ((hash >>> 0) % 3) * height * 0.12;
-  const slide = Math.sin(bodyAngle) * innerWidth * 0.24;
+  const slide = -Math.sin(bodyAngle) * innerWidth * 0.32 -
+    Math.tanh(speedMps / 2.5) * innerWidth * 0.16;
   const targetX = Math.max(insetX, Math.min(insetX + innerWidth - width,
     insetX + normalized * (innerWidth - width) + slide));
-  const jostle = reducedMotion ? 0 : Math.sin(elapsed * 9 + normalized * 8) *
-    Math.min(4, Math.abs(speedMps) * 0.7) * progress;
+  const settling = reducedMotion ? 0 : Math.sin(elapsed * 7 + normalized * 4) *
+    Math.exp(-elapsed * 2.4) * Math.min(7, 2 + Math.abs(speedMps)) * progress;
   return {
-    x: startX + (targetX - startX) * progress + jostle,
+    x: startX + (targetX - startX) * progress + settling,
     y: startY + (floorY - startY) * progress,
-    rotation: progress * (bodyAngle + (normalized - 0.5) * 0.9) + jostle * 0.025,
+    rotation: progress * ((normalized - 0.5) * 0.9) + settling * 0.018,
   };
 }
 
@@ -1270,28 +1278,25 @@ function drawDebug(
     }
     context.stroke();
   }
-  drawDebugReadout(context, width, height, world);
+  drawDebugReadout(context, width, world, center, pixelsPerMeter);
   context.restore();
 }
 
-function drawDebugReadout(context: CanvasRenderingContext2D, width: number, height: number,
-  world: WorldSnapshot): void {
+function drawDebugReadout(context: CanvasRenderingContext2D, width: number,
+  world: WorldSnapshot, center: { readonly x: number; readonly y: number },
+  pixelsPerMeter: number): void {
   const compact = width < 620;
-  const panelWidth = compact ? 164 : 204;
-  const panelHeight = compact ? 150 : 166;
-  const x = width - panelWidth - (compact ? 58 : 68);
-  const y = Math.min(compact ? 92 : 82, Math.max(12, height - panelHeight - 12));
+  const x = Math.min(width - (compact ? 105 : 145), center.x + pixelsPerMeter * 1.82);
+  const y = center.y - pixelsPerMeter * 0.72;
   context.save();
-  context.fillStyle = 'rgba(5, 20, 31, 0.92)';
-  context.strokeStyle = '#58f2b4';
-  context.lineWidth = 2;
-  roundedRect(context, x, y, panelWidth, panelHeight, 13);
-  context.fill();
-  context.stroke();
   context.textAlign = 'left';
   context.fillStyle = '#58f2b4';
-  context.font = `900 ${compact ? 10 : 11}px system-ui`;
-  context.fillText('FÍSICA EN VIVO', x + 13, y + 21);
+  context.shadowColor = 'rgba(5, 20, 31, 0.96)';
+  context.shadowBlur = 5;
+  context.shadowOffsetX = 2;
+  context.shadowOffsetY = 2;
+  context.font = `950 ${compact ? 9 : 11}px system-ui`;
+  context.fillText('FÍSICA EN VIVO', x, y);
   const brokenJoints = world.joints.filter((joint) => joint.broken).length;
   const rows = [
     ['Masa total', `${Math.round(world.body.massKg)} kg`],
@@ -1302,15 +1307,10 @@ function drawDebugReadout(context: CanvasRenderingContext2D, width: number, heig
     ['Contactos', String(world.contacts.length)],
     ['Uniones', brokenJoints > 0 ? `${brokenJoints} rotas` : `${world.joints.length} firmes`],
   ] as const;
-  context.font = `700 ${compact ? 9 : 10}px system-ui`;
+  context.font = `800 ${compact ? 8 : 10}px system-ui`;
   rows.forEach(([label, value], index) => {
-    const rowY = y + 42 + index * (compact ? 15 : 17);
-    context.fillStyle = 'rgba(255,255,255,0.62)';
-    context.fillText(label, x + 13, rowY);
     context.fillStyle = '#fff5d9';
-    context.textAlign = 'right';
-    context.fillText(value, x + panelWidth - 13, rowY);
-    context.textAlign = 'left';
+    context.fillText(`${label}: ${value}`, x, y + 18 + index * (compact ? 13 : 15));
   });
   context.restore();
 }

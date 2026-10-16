@@ -37,7 +37,7 @@ function addPassengerSeat(controller: AppController): void {
 function addCargoSupports(controller: AppController, suspension = false): void {
   addPassengerSeat(controller);
   controller.dispatch({ type: 'BUY_PART', kind: 'roofRack' });
-  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'roofRack', column: 2, row: 2 });
+  controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'roofRack', column: 1, row: 0 });
   controller.dispatch({ type: 'BUY_PART', kind: 'rearCarrier' });
   controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'rearCarrier', column: 0, row: 4 });
   if (suspension) {
@@ -122,7 +122,7 @@ describe('flujo vertical del primer recorrido', () => {
     const controller = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(controller, false);
     expect(gridForModel(controller.snapshot.game)).toEqual([
-      { id: 'seat-1', kind: 'seat', column: 3, row: 3 },
+      { id: 'seat-1', kind: 'seat', column: 8, row: 3 },
     ]);
     expect(controller.snapshot.game.ownedParts).toMatchObject({ wheel: 2, engine: 1, seat: 1 });
   });
@@ -154,10 +154,13 @@ describe('flujo vertical del primer recorrido', () => {
     while (controller.snapshot.vehicleX < 5.8) controller.update(1 / 60);
     controller.dispatch({ type: 'SET_BRAKE', value: true });
     while (Math.abs(controller.snapshot.speedMps) > 0.05) controller.update(1 / 60);
+    controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'solicitud-inexistente' });
+    expect(controller.snapshot.messageSource).toBe('system');
     controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'primer-pasajero' });
     expect(controller.snapshot.fareNotice?.total).toBeGreaterThan(0);
     expect(controller.snapshot.fareNotice?.surcharge).toBe(0);
     expect(controller.snapshot.messageSource).toBe('passenger');
+    expect(controller.snapshot.pendingMessageCount).toBe(0);
     const passenger = controller.snapshot.ride?.requests.find((item) =>
       item.request.id === 'primer-pasajero')?.request;
     expect(controller.snapshot.messageColor).toBe(personColorForVariant(passenger?.attendantVariant ?? ''));
@@ -385,7 +388,7 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.engineVibrationPercent).toBe(0);
   });
 
-  it('muestra avisos por turnos, los retira y permite desactivarlos desde pausa', () => {
+  it('no acumula avisos del juego, los retira y permite desactivarlos desde pausa', () => {
     const storage = memoryStorage();
     const controller = new AppController(new LocalSaveRepository(storage));
     enterWorkshop(controller);
@@ -395,10 +398,8 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.message).toContain('Motor al límite');
     controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'solicitud-inexistente' });
     expect(controller.snapshot.message).toContain('Motor al límite');
-    expect(controller.snapshot.pendingMessageCount).toBe(1);
+    expect(controller.snapshot.pendingMessageCount).toBe(0);
     controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
-    for (let index = 0; index < 230; index += 1) controller.update(1 / 60);
-    expect(controller.snapshot.message).toContain('no está disponible');
     for (let index = 0; index < 230; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.message).toBe('');
 

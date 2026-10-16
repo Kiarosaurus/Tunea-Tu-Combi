@@ -598,7 +598,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     button.title = isDriverSeat ? 'Conductor: se puede mover, no guardar'
       : secured ? 'Conectada al chasis' : 'Suelta: se caerá al iniciar';
     button.append(
-      textElement('span', 'grid-piece-icon', partIcon(placement.kind)),
+      partIconElement(placement.kind, 'grid-piece-icon'),
       ...(isDriverSeat ? [textElement('span', 'grid-driver-person', '')] : []),
       textElement('span', 'grid-piece-name', shortPartName(placement.kind)),
       textElement('span', 'grid-piece-state', isDriverSeat ? 'CONDUCTOR' : secured ? 'CONECTADA' : 'SUELTA'),
@@ -644,7 +644,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
       ? `Seleccionar ${part.name}, ${available} libre${available === 1 ? '' : 's'}`
       : `Comprar ${part.name} por S/ ${part.price}`);
     button.append(
-      textElement('span', 'part-card-icon', partIcon(part.kind)),
+      partIconElement(part.kind, 'part-card-icon'),
       textElement('strong', 'part-card-name', shortPartName(part.kind)),
       textElement('span', `part-card-count ${available > 0 ? '' : 'is-price'}`,
         available > 0 ? `x${available}` : `S/ ${part.price}`),
@@ -662,10 +662,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     }
     trayGrid.append(card);
   }
-  inventory.append(trayGrid,
-    textElement('p', 'cargo-support-help',
-      'Bulto de techo: parrilla + asiento para acompañante. Scooter: portacarga posterior + asiento para acompañante.'),
-  );
+  inventory.append(trayGrid);
   builder.append(vehicleSection, inventory);
   panel.append(builder);
 
@@ -681,17 +678,26 @@ function partName(kind: PartKind): string {
   return PART_CATALOG.find((part) => part.kind === kind)?.name ?? kind;
 }
 
-function partIcon(kind: PartKind): string {
+function partIconElement(kind: PartKind, className: string): HTMLSpanElement {
   const icons: Readonly<Record<PartKind, string>> = {
-    chassis: 'CH', wheel: 'O', engine: 'M', seat: 'S', roofRack: 'T', rearCarrier: 'C', suspension: '~',
+    chassis: '<path d="M3 15h18l-2 4H5z"/>',
+    wheel: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+    engine: '<rect x="3" y="6" width="18" height="13" rx="3"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="12" r="2"/><path d="M18 3v4M6 3v4"/>',
+    seat: '<path d="M7 3v11h9V8M7 14v7M16 14v7M7 11h9"/>',
+    roofRack: '<path d="M5 2v20M5 6h5M5 19h5"/><rect x="10" y="5" width="10" height="15" rx="2"/><path d="M10 11h10"/>',
+    rearCarrier: '<circle cx="7" cy="17" r="4"/><circle cx="18" cy="17" r="4"/><path d="M7 17l5-9 6 9M12 8h7M3 4v16"/>',
+    suspension: '<path d="M2 12h3l2-6 4 12 4-12 3 6h4"/>',
   };
-  return icons[kind];
+  const icon = textElement('span', `${className} part-symbol part-symbol-${kind}`, '');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = `<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">${icons[kind]}</svg>`;
+  return icon;
 }
 
 function shortPartName(kind: PartKind): string {
   const names: Readonly<Record<PartKind, string>> = {
     chassis: 'Chasis', wheel: 'Rueda', engine: 'Motor', seat: 'Asiento',
-    roofRack: 'Parrilla', rearCarrier: 'Portacarga', suspension: 'Suspensión',
+    roofRack: 'Parrilla', rearCarrier: 'Portabicis', suspension: 'Suspensión',
   };
   return names[kind];
 }

@@ -38,6 +38,19 @@ describe('guardado local v1', () => {
     expect(isSaveDataV1({ ...save, settings: legacySettings })).toBe(true);
   });
 
+  it('acepta la parrilla horizontal de guardados anteriores', () => {
+    const initial = createInitialGameModel();
+    const legacyRack = createSaveData({
+      ...initial,
+      ownedParts: { ...initial.ownedParts, roofRack: 1 },
+      workshopGrid: [
+        ...(initial.workshopGrid ?? []),
+        { id: 'roofRack-1', kind: 'roofRack', column: 2, row: 2 },
+      ],
+    }, false);
+    expect(isSaveDataV1(legacyRack)).toBe(true);
+  });
+
   it('preserva una cadena corrupta en memoria y permite recuperar el inicio', () => {
     const storage = memoryStorage();
     storage.setItem(SAVE_KEY, '{mal-json');

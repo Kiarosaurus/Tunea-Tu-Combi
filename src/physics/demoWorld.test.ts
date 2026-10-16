@@ -74,10 +74,10 @@ describe('mundos de la campaña', () => {
   it('mantiene estable la construcción de campaña en la ruta de mercado', () => {
     let model = { ...createInitialGameModel(), wallet: 200 };
     model = buyPart(model, 'seat');
-    model = placeGridPart(model, 'seat', 0, 3);
+    model = placeGridPart(model, 'seat', 4, 3);
     for (const [kind, column, row] of [
-      ['roofRack', 3, 2],
-      ['rearCarrier', 8, 4],
+      ['roofRack', 1, 0],
+      ['rearCarrier', 0, 4],
       ['suspension', 3, 5],
     ] as const) {
       model = buyPart(model, kind);

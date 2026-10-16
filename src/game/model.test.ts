@@ -9,6 +9,7 @@ import {
   DRIVER_SEAT_ID,
   gridBuildStats,
   gridForModel,
+  gridVehicleCapacity,
   moveGridPart,
   placeGridPart,
   passengerCapacity,
@@ -80,6 +81,14 @@ describe('taller y economía', () => {
     expect(() => placeGridPart(withExtraSeat, 'seat', 4, 0)).toThrow('ocupado');
   });
 
+  it('limita la parrilla a la zona superior trasera y la conecta al chasis', () => {
+    const purchased = buyPart(createInitialGameModel(), 'roofRack');
+    expect(() => placeGridPart(purchased, 'roofRack', 4, 0)).toThrow('parte trasera');
+    expect(() => placeGridPart(purchased, 'roofRack', 1, 2)).toThrow('arriba');
+    const mounted = placeGridPart(purchased, 'roofRack', 1, 0);
+    expect(gridVehicleCapacity(gridForModel(mounted)).roofCargo).toBe(1);
+  });
+
   it('mueve una pieza colocada sin duplicarla ni consumir inventario', () => {
     const initial = createInitialGameModel();
     const moved = moveGridPart(initial, 'engine-1', 5, 1);
@@ -88,7 +97,7 @@ describe('taller y economía', () => {
       row: 1,
     });
     expect(gridForModel(moved).filter((item) => item.kind === 'engine')).toHaveLength(1);
-    expect(() => moveGridPart(moved, 'engine-1', 3, 3)).toThrow('ocupado');
+    expect(() => moveGridPart(moved, 'engine-1', 8, 3)).toThrow('ocupado');
   });
 
   it('reembolsa por completo una pieza adicional libre', () => {

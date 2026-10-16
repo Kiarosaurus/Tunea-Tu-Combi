@@ -113,8 +113,8 @@ async function assembleVehicle(page: Page, suspension = false, cargoSupports = t
   await placeWorkshopPart(page, 'Asiento', 5, 4);
   await placeWorkshopPart(page, 'Asiento', 6, 4);
   if (cargoSupports) {
-    await placeWorkshopPart(page, 'Parrilla de techo', 3, 3);
-    await placeWorkshopPart(page, 'Portacarga posterior', 1, 5);
+    await placeWorkshopPart(page, 'Parrilla de techo', 2, 1);
+    await placeWorkshopPart(page, 'Portabicis posterior', 1, 5);
   }
   if (suspension) await placeWorkshopPart(page, 'Suspensión reforzada', 5, 6);
 }
@@ -168,7 +168,6 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.getByRole('heading', { name: 'Métele mano' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'No hay un arreglo anterior para recuperar' })).toBeDisabled();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
-  await expect(page.getByText(/Bulto de techo: parrilla.*Scooter: portacarga posterior/)).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
   await expect(page.locator('.grid-piece')).toHaveCount(1);
   await expect(page.getByRole('button', { name: /Mover asiento del conductor/ })).toBeVisible();
@@ -178,7 +177,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await assembleVehicle(page);
   await expect(page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' })).toBeEnabled();
 
-  const driverSeat = page.getByRole('button', { name: /Mover asiento del conductor de columna 4, fila 4/ });
+  const driverSeat = page.getByRole('button', { name: /Mover asiento del conductor de columna 9, fila 4/ });
   await driverSeat.scrollIntoViewIfNeeded();
   const scrollBeforeChange = await page.evaluate(() => window.scrollY);
   await driverSeat.click();
@@ -196,7 +195,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(refundSeat).toHaveCount(0);
 
   const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
-  const targetCell = page.getByRole('button', { name: 'Celda columna 1, fila 1' });
+  const targetCell = page.getByRole('button', { name: 'Celda columna 4, fila 1' });
   const engineBox = await engine.boundingBox();
   const targetBox = await targetCell.boundingBox();
   if (!engineBox || !targetBox) throw new Error('No se pudo medir el arrastre del taller.');
@@ -208,7 +207,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('.grid-drag-preview')).toHaveClass(/is-valid/);
   await expect(page.locator('.pointer-drag-ghost')).toBeVisible();
   await page.mouse.up();
-  await expect(page.getByRole('button', { name: /Retirar Motor urbano de columna 1, fila 1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Retirar Motor urbano de columna 4, fila 1/ })).toBeVisible();
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
   await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();

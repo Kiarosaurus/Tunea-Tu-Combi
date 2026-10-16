@@ -83,7 +83,7 @@ avanza con una velocidad inicial. La marca de las ruedas gira visualmente según
 la distancia recorrida. Durante el nivel 1, un modelo de motor centralizado
 limita la aceleración y el frenado según el contacto y la tracción disponible.
 La suspensión reforzada aplica resorte y amortiguación si está equipada; la
-parrilla y el portacarga agregan masa mediante uniones que pueden romperse por
+parrilla y el portabicis agregan masa mediante uniones que pueden romperse por
 impacto. Todavía no hay rotación de rueda independiente y la fricción pasiva
 configurable aún no se usa en la combi jugable.
 
@@ -116,7 +116,7 @@ Después de iniciar un recorrido, el taller recuerda esa distribución. El botó
 `Recuperar combi` la reconstruye en cualquier nivel y compra únicamente las
 piezas que falten con el presupuesto del intento actual.
 La cuadrícula está integrada en la silueta lateral de la combi: motor, asientos,
-parrilla, portacarga y suspensión quedan visibles tanto al construir como al
+parrilla, portabicis y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
 
 En ruta, `D` o flecha derecha acelera, `A` o flecha izquierda aplica reversa,
@@ -165,7 +165,7 @@ aportan función. El fondo usa capas periódicas de paralaje para que nubes, cer
 edificios y mobiliario continúen sin saltos al avanzar.
 
 La subida al cerro introduce una pendiente prolongada y solicitudes en competencia. El día
-de mercado exige asiento, parrilla y portacarga posterior; combina pasajeros,
+de mercado exige asiento, parrilla y portabicis posterior; combina pasajeros,
 carga alta y scooter sobre terreno ondulado. Cada recorrido conserva su propia
 cuota, meta, semilla y apariencia provisional.
 

@@ -779,7 +779,14 @@ export class AppController {
     if (!replace && this.#machine.state === 'PLAYING' && this.#message) {
       const duplicate = this.#message === entry.text ||
         this.#messageQueue.some((queued) => queued.text === entry.text);
-      if (!duplicate && this.#messageQueue.length < MAX_QUEUED_MESSAGES) this.#messageQueue.push(entry);
+      if (source === 'passenger') {
+        if (this.#messageSource !== 'passenger') {
+          this.#messageQueue = [];
+          this.#showMessage(entry);
+        } else if (!duplicate && this.#messageQueue.length < MAX_QUEUED_MESSAGES) {
+          this.#messageQueue.push(entry);
+        }
+      }
       return;
     }
     this.#messageQueue = [];
@@ -822,7 +829,7 @@ function passengerPayloadOffset(centerOfMass: { readonly x: number; readonly y: 
 function cargoPayloadOffset(kind: 'roofCargo' | 'scooter',
   centerOfMass: { readonly x: number; readonly y: number }):
 { readonly x: number; readonly y: number } {
-  if (kind === 'roofCargo') return { x: -centerOfMass.x, y: 0.75 - centerOfMass.y };
+  if (kind === 'roofCargo') return { x: -1.05 - centerOfMass.x, y: 0.75 - centerOfMass.y };
   return { x: -1.7 - centerOfMass.x, y: -centerOfMass.y };
 }
 

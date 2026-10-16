@@ -22,4 +22,16 @@ describe('loosePartPose', () => {
       5, 5, 150, 60, 1, -0.1, 4, true);
     expect(second).toEqual(first);
   });
+
+  it('se asienta con la combi y se desplaza hacia atrás al avanzar', () => {
+    const stopped = loosePartPose('seat-3', 80, 10, 18, 22,
+      5, 5, 150, 60, 4, 0, 0, false);
+    const moving = loosePartPose('seat-3', 80, 10, 18, 22,
+      5, 5, 150, 60, 4, 0, 5, false);
+    const later = loosePartPose('seat-3', 80, 10, 18, 22,
+      5, 5, 150, 60, 5, 0, 5, false);
+    expect(moving.x).toBeLessThan(stopped.x);
+    expect(Math.abs(later.x - moving.x)).toBeLessThan(0.1);
+    expect(Math.abs(later.rotation - moving.rotation)).toBeLessThan(0.01);
+  });
 });

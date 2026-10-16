@@ -40,7 +40,7 @@ export const PART_FOOTPRINTS: Readonly<Record<PartKind, PartFootprint>> = {
   wheel: { columns: 2, rows: 1 },
   engine: { columns: 2, rows: 2 },
   seat: { columns: 1, rows: 2 },
-  roofRack: { columns: 3, rows: 1 },
+  roofRack: { columns: 1, rows: 2 },
   rearCarrier: { columns: 2, rows: 1 },
   suspension: { columns: 3, rows: 1 },
 };
@@ -112,7 +112,7 @@ export function createInitialGameModel(): GameModel {
       { id: 'wheel-1', kind: 'wheel', column: 1, row: 5 },
       { id: 'wheel-2', kind: 'wheel', column: 7, row: 5 },
       { id: 'engine-1', kind: 'engine', column: 6, row: 3 },
-      { id: 'seat-1', kind: 'seat', column: 3, row: 3 },
+      { id: 'seat-1', kind: 'seat', column: 8, row: 3 },
     ],
     unlockedLevel: 1,
     completedLevels: {},
@@ -134,9 +134,9 @@ export function createDemoGameModel(): GameModel {
       { id: 'wheel-1', kind: 'wheel', column: 1, row: 5 },
       { id: 'wheel-2', kind: 'wheel', column: 7, row: 5 },
       { id: 'engine-1', kind: 'engine', column: 6, row: 3 },
-      { id: 'seat-1', kind: 'seat', column: 3, row: 3 },
+      { id: 'seat-1', kind: 'seat', column: 8, row: 3 },
       { id: 'seat-2', kind: 'seat', column: 4, row: 3 },
-      { id: 'roofRack-1', kind: 'roofRack', column: 2, row: 2 },
+      { id: 'roofRack-1', kind: 'roofRack', column: 1, row: 0 },
       { id: 'rearCarrier-1', kind: 'rearCarrier', column: 0, row: 4 },
       { id: 'suspension-1', kind: 'suspension', column: 4, row: 5 },
     ],
@@ -153,13 +153,13 @@ export function prepareLevelWorkshop(model: GameModel, buildBudget: number,
   const base = createInitialGameModel();
   const canonicalExtras: Readonly<Partial<Record<PartKind, GridPlacement>>> = {
     seat: { id: 'seat-2', kind: 'seat', column: 4, row: 3 },
-    roofRack: { id: 'roofRack-1', kind: 'roofRack', column: 2, row: 2 },
+    roofRack: { id: 'roofRack-1', kind: 'roofRack', column: 1, row: 0 },
     rearCarrier: { id: 'rearCarrier-1', kind: 'rearCarrier', column: 0, row: 4 },
     suspension: { id: 'suspension-1', kind: 'suspension', column: 4, row: 5 },
   };
   const ownedParts = { ...base.ownedParts };
   const workshopGrid: GridPlacement[] = [
-    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 8, row: 3 },
   ];
   for (const kind of defaultExtras) {
     const placement = canonicalExtras[kind];
@@ -413,7 +413,10 @@ export function validateGridBuild(grid: readonly GridPlacement[]): string | null
 export function securedGridPlacements(grid: readonly GridPlacement[]): readonly GridPlacement[] {
   const secured = new Set<string>();
   for (const placement of grid) {
-    if (cellsFor(placement).some((cell) => cell.row >= BUILD_GRID_ROWS - 2)) secured.add(placement.id);
+    const mountedRoofRack = placement.kind === 'roofRack' &&
+      placement.row === 0 && placement.column <= 2;
+    if (mountedRoofRack || cellsFor(placement)
+      .some((cell) => cell.row >= BUILD_GRID_ROWS - 2)) secured.add(placement.id);
   }
   let changed = true;
   while (changed) {
@@ -506,9 +509,9 @@ export function legacyBuildToGrid(build: SerializedBuild): readonly GridPlacemen
   if (build.rearWheel === 'wheel') add('wheel', 1, 5);
   if (build.frontWheel === 'wheel') add('wheel', 7, 5);
   if (build.engine === 'engine') add('engine', 6, 3);
-  if (build.driverSeat === 'seat') add('seat', 3, 3);
+  if (build.driverSeat === 'seat') add('seat', 8, 3);
   if (build.passengerSeat === 'seat') add('seat', 4, 3);
-  if (build.roof === 'roofRack') add('roofRack', 2, 2);
+  if (build.roof === 'roofRack') add('roofRack', 1, 0);
   if (build.rearCarrier === 'rearCarrier') add('rearCarrier', 0, 4);
   if (build.suspension === 'suspension') add('suspension', 4, 5);
   return placements;
@@ -529,6 +532,9 @@ function validateGridPlacement(placement: GridPlacement, grid: readonly GridPlac
     throw new Error('La pieza debe alinearse con la cuadrícula.');
   }
   const footprint = PART_FOOTPRINTS[placement.kind];
+  if (placement.kind === 'roofRack' && (placement.row !== 0 || placement.column > 2)) {
+    throw new Error('La parrilla vertical solo va arriba, en la parte trasera de la combi.');
+  }
   if (placement.column < 0 || placement.row < 0 ||
     placement.column + footprint.columns > BUILD_GRID_COLUMNS ||
     placement.row + footprint.rows > BUILD_GRID_ROWS) {
