@@ -1,4 +1,5 @@
 import type { AppSnapshot } from '../app/appController';
+import moneyRewardUrl from '../assets/money-reward.png';
 import type { Disposable } from '../core/contracts';
 import { add, rotate } from '../core/vector2';
 import { LEVELS } from '../data/levels';
@@ -22,6 +23,17 @@ import type { WorldSnapshot } from '../physics/world';
 
 export interface CanvasRenderer extends Disposable {
   render(snapshot: AppSnapshot, world: WorldSnapshot): void;
+}
+
+let menuMoneyImage: HTMLImageElement | null = null;
+
+function getMenuMoneyImage(): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  if (!menuMoneyImage) {
+    menuMoneyImage = new Image();
+    menuMoneyImage.src = moneyRewardUrl;
+  }
+  return menuMoneyImage;
 }
 
 interface RequestHitArea {
@@ -107,6 +119,8 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.menuShowcaseVariant = String(snapshot.menuShowcaseVariant);
       canvas.dataset.menuShowcasePassengers = String(menuShowcasePassengerCount(snapshot.menuShowcaseVariant));
       canvas.dataset.menuShowcaseFare = String(menuShowcaseFare(snapshot.menuShowcaseVariant));
+      canvas.dataset.menuShowcaseMoneySprite = moneyRewardUrl.startsWith('data:image/')
+        ? 'local-png' : 'bundled-png';
       canvas.dataset.menuShowcaseParts = JSON.stringify(menuShowcasePlacements(snapshot.menuShowcaseVariant)
         .map((placement) => placement.kind));
       canvas.dataset.fareNotice = JSON.stringify(snapshot.fareNotice);
@@ -122,11 +136,15 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.onboardRequestIds = JSON.stringify(snapshot.ride?.requests
         .filter((progress) => progress.status === 'onboard')
         .map((progress) => progress.request.id) ?? []);
+      canvas.dataset.routeCardRequestIds = JSON.stringify(snapshot.ride?.requests
+        .filter((progress) => progress.status === 'onboard' && progress.request.kind === 'passenger')
+        .map((progress) => progress.request.id) ?? []);
       canvas.dataset.onboardMarkers = JSON.stringify(snapshot.ride?.requests
         .filter((progress) => progress.status === 'onboard')
         .map((progress) => ({
           id: progress.request.id,
           color: personColorForVariant(progress.request.attendantVariant),
+          kind: progress.request.kind,
           destinationX: progress.request.destinationX,
           destinationStop: progress.request.destinationStop,
           remainingMeters: Math.max(0, progress.request.destinationX - snapshot.vehicleX),
@@ -279,6 +297,9 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
     context.lineTo(targetX + 6, lineY - 24);
     context.closePath();
     context.fill();
+    if (passenger.request.kind !== 'passenger') {
+      drawRouteCargoIcon(context, targetX, lineY - 36, passenger.request.kind);
+    }
   }
   const combiX = lineLeft + (lineRight - lineLeft) * progress;
   drawRouteCombiIcon(context, combiX, lineY - 17);
@@ -290,14 +311,16 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   const cardStride = 140;
   const reservedWidth = nextRequest ? 140 : 55;
   const cardSlots = Math.max(1, Math.floor((boardWidth - reservedWidth) / cardStride));
-  const visibleCount = onboard.length > cardSlots ? Math.max(1, cardSlots - 1) : onboard.length;
-  for (const passenger of onboard.slice(0, visibleCount)) {
+  const passengerCards = onboard.filter((progress) => progress.request.kind === 'passenger');
+  const visibleCount = passengerCards.length > cardSlots
+    ? Math.max(1, cardSlots - 1) : passengerCards.length;
+  for (const passenger of passengerCards.slice(0, visibleCount)) {
     drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
       passenger.request.destinationStop, passenger.request.destinationX, snapshot.vehicleX,
       passenger.request.servedByRoute);
     cardX += cardStride;
   }
-  const hiddenCount = onboard.length - visibleCount;
+  const hiddenCount = passengerCards.length - visibleCount;
   if (hiddenCount > 0) {
     context.fillStyle = 'rgba(242, 193, 78, 0.18)';
     roundedRect(context, cardX, cardY - 17, 44, 34, 10);
@@ -312,6 +335,35 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
     context.fillStyle = '#fff5d9';
     context.font = '900 13px system-ui';
     context.fillText(`A ${shortStopName(nextRequest.request.destinationStop)}`, right - 18, cardY + 14);
+  }
+  context.restore();
+}
+
+function drawRouteCargoIcon(context: CanvasRenderingContext2D, x: number, y: number,
+  kind: 'roofCargo' | 'scooter'): void {
+  context.save();
+  context.translate(x, y);
+  context.strokeStyle = '#fff5d9';
+  context.fillStyle = '#f2c14e';
+  context.lineWidth = 2;
+  if (kind === 'roofCargo') {
+    roundedRect(context, -7, -6, 14, 12, 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(-3, -6);
+    context.quadraticCurveTo(0, -11, 3, -6);
+    context.stroke();
+  } else {
+    context.beginPath();
+    context.arc(-6, 4, 4, 0, Math.PI * 2);
+    context.arc(6, 4, 4, 0, Math.PI * 2);
+    context.moveTo(-6, 4);
+    context.lineTo(0, -5);
+    context.lineTo(6, 4);
+    context.moveTo(0, -5);
+    context.lineTo(7, -5);
+    context.stroke();
   }
   context.restore();
 }
@@ -421,7 +473,7 @@ function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
     return capacity.roofCargo === 0 ? 'FALTA PARRILLA' : 'SOPORTE OCUPADO';
   }
   if (kind === 'scooter' && (capacity.scooter === 0 || occupiedSupport >= capacity.scooter)) {
-    return capacity.scooter === 0 ? 'FALTA PORTACARGA' : 'SOPORTE OCUPADO';
+    return capacity.scooter === 0 ? 'FALTA PORTABICIS' : 'SOPORTE OCUPADO';
   }
   if (capacity.passenger <= occupiedSeats) {
     return capacity.passenger === 0 ? 'FALTA ASIENTO' : 'SIN ESPACIO';
@@ -891,21 +943,18 @@ function drawMenuShowcaseFare(context: CanvasRenderingContext2D, variant: number
   const y = bodyY - bodyHeight * (0.48 + progress * 0.35);
   context.save();
   context.globalAlpha = visibility;
-  context.fillStyle = '#f2c14e';
-  context.strokeStyle = '#5d421b';
-  context.lineWidth = 2;
-  for (const offset of [-0.18, 0.18]) {
-    context.beginPath();
-    context.arc(bodyX + bodyWidth * (0.5 + offset), y, bodyHeight * 0.12, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-  }
   context.fillStyle = '#ffe083';
   context.font = `1000 ${Math.max(18, bodyHeight * 0.27)}px system-ui`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.shadowColor = 'rgba(0,0,0,0.5)';
   context.shadowBlur = 8;
+  const coinImage = getMenuMoneyImage();
+  if (coinImage?.complete && coinImage.naturalWidth > 0) {
+    const size = Math.max(42, bodyHeight * 0.62);
+    context.drawImage(coinImage, bodyX + bodyWidth * 0.18 - size / 2, y - size / 2, size, size);
+    context.drawImage(coinImage, bodyX + bodyWidth * 0.82 - size / 2, y - size / 2, size, size);
+  }
   context.fillText(`+S/ ${menuShowcaseFare(variant)}`, bodyX + bodyWidth * 0.5, y);
   context.restore();
 }
@@ -941,16 +990,19 @@ function drawOnboardRequests(context: CanvasRenderingContext2D, snapshot: AppSna
       context.stroke();
     }
     if (progress.request.kind === 'scooter') {
-      const scooterX = bodyX - bodyWidth * 0.13;
-      const scooterY = bodyY + bodyHeight * 0.7;
+      const scooterX = bodyX - bodyWidth * 0.045;
+      const scooterTopY = bodyY + bodyHeight * 0.38;
+      const wheelRadius = bodyHeight * 0.075;
       context.strokeStyle = '#d6d8d5';
       context.lineWidth = 3;
       context.beginPath();
-      context.arc(scooterX, scooterY, bodyHeight * 0.09, 0, Math.PI * 2);
-      context.arc(scooterX + bodyWidth * 0.2, scooterY, bodyHeight * 0.09, 0, Math.PI * 2);
-      context.moveTo(scooterX, scooterY);
-      context.lineTo(scooterX + bodyWidth * 0.09, scooterY - bodyHeight * 0.23);
-      context.lineTo(scooterX + bodyWidth * 0.2, scooterY);
+      context.arc(scooterX, scooterTopY, wheelRadius, 0, Math.PI * 2);
+      context.arc(scooterX, scooterTopY + bodyHeight * 0.34, wheelRadius, 0, Math.PI * 2);
+      context.moveTo(scooterX, scooterTopY);
+      context.lineTo(scooterX - bodyWidth * 0.045, scooterTopY + bodyHeight * 0.17);
+      context.lineTo(scooterX, scooterTopY + bodyHeight * 0.34);
+      context.moveTo(scooterX - bodyWidth * 0.045, scooterTopY + bodyHeight * 0.17);
+      context.lineTo(scooterX + bodyWidth * 0.035, scooterTopY + bodyHeight * 0.17);
       context.stroke();
     }
   }
@@ -1083,36 +1135,49 @@ function drawInstalledParts(
     } else if (placement.kind === 'roofRack') {
       context.strokeStyle = '#f2c14e';
       context.lineWidth *= 1.6;
-      const rackX = x + width * 0.24;
       context.beginPath();
-      context.moveTo(rackX, y + height * 0.08);
-      context.lineTo(rackX, y + height * 0.92);
-      context.moveTo(rackX, y + height * 0.28);
-      context.lineTo(x + width * 0.76, y + height * 0.28);
-      context.moveTo(rackX, y + height * 0.78);
-      context.lineTo(x + width * 0.76, y + height * 0.78);
+      context.moveTo(x + width * 0.04, y + height * 0.78);
+      context.lineTo(x + width * 0.96, y + height * 0.78);
+      context.moveTo(x + width * 0.08, y + height * 0.98);
+      context.lineTo(x + width * 0.08, y + height * 0.58);
+      context.moveTo(x + width * 0.92, y + height * 0.98);
+      context.lineTo(x + width * 0.92, y + height * 0.58);
       context.stroke();
+      const fridgeWidth = width * 0.28;
+      const fridgeHeight = Math.max(height * 1.55, 24);
+      const fridgeX = x + width * 0.36;
+      const fridgeY = y + height * 0.76 - fridgeHeight;
       context.fillStyle = '#d9edf1';
-      roundedRect(context, x + width * 0.42, y + height * 0.18,
-        width * 0.42, height * 0.66, 3);
+      roundedRect(context, fridgeX, fridgeY, fridgeWidth, fridgeHeight, 3);
       context.fill();
       context.strokeStyle = '#315e83';
       context.stroke();
       context.beginPath();
-      context.moveTo(x + width * 0.44, y + height * 0.43);
-      context.lineTo(x + width * 0.82, y + height * 0.43);
+      context.moveTo(fridgeX + 2, fridgeY + fridgeHeight * 0.38);
+      context.lineTo(fridgeX + fridgeWidth - 2, fridgeY + fridgeHeight * 0.38);
       context.stroke();
     } else if (placement.kind === 'rearCarrier') {
       context.strokeStyle = '#d6d8d5';
       context.lineWidth *= 1.3;
+      const carrierX = x + width * 0.32;
+      const wheelX = x + width * 0.68;
+      const topWheelY = y + height * 0.23;
+      const bottomWheelY = y + height * 0.77;
+      const wheelRadius = Math.min(width * 0.2, height * 0.12);
       context.beginPath();
-      context.arc(x + width * 0.23, y + height * 0.7, height * 0.2, 0, Math.PI * 2);
-      context.arc(x + width * 0.75, y + height * 0.7, height * 0.2, 0, Math.PI * 2);
-      context.moveTo(x + width * 0.23, y + height * 0.7);
-      context.lineTo(x + width * 0.45, y + height * 0.3);
-      context.lineTo(x + width * 0.75, y + height * 0.7);
-      context.moveTo(x + width * 0.45, y + height * 0.3);
-      context.lineTo(x + width * 0.76, y + height * 0.28);
+      context.moveTo(carrierX, y + height * 0.05);
+      context.lineTo(carrierX, y + height * 0.95);
+      context.moveTo(carrierX, topWheelY);
+      context.lineTo(wheelX, topWheelY);
+      context.moveTo(carrierX, bottomWheelY);
+      context.lineTo(wheelX, bottomWheelY);
+      context.arc(wheelX, topWheelY, wheelRadius, 0, Math.PI * 2);
+      context.arc(wheelX, bottomWheelY, wheelRadius, 0, Math.PI * 2);
+      context.moveTo(wheelX, topWheelY);
+      context.lineTo(x + width * 0.48, y + height * 0.5);
+      context.lineTo(wheelX, bottomWheelY);
+      context.moveTo(x + width * 0.48, y + height * 0.5);
+      context.lineTo(x + width * 0.82, y + height * 0.5);
       context.stroke();
     } else if (placement.kind === 'suspension') {
       context.strokeStyle = secured ? '#62b7ff' : '#ff8066';

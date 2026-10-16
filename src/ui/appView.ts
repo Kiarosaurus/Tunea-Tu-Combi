@@ -684,8 +684,8 @@ function partIconElement(kind: PartKind, className: string): HTMLSpanElement {
     wheel: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
     engine: '<rect x="3" y="6" width="18" height="13" rx="3"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="12" r="2"/><path d="M18 3v4M6 3v4"/>',
     seat: '<path d="M7 3v11h9V8M7 14v7M16 14v7M7 11h9"/>',
-    roofRack: '<path d="M5 2v20M5 6h5M5 19h5"/><rect x="10" y="5" width="10" height="15" rx="2"/><path d="M10 11h10"/>',
-    rearCarrier: '<circle cx="7" cy="17" r="4"/><circle cx="18" cy="17" r="4"/><path d="M7 17l5-9 6 9M12 8h7M3 4v16"/>',
+    roofRack: '<path d="M2 19h20M4 19v3M20 19v3"/><rect x="8" y="3" width="9" height="16" rx="2"/><path d="M8 10h9"/>',
+    rearCarrier: '<path d="M4 2v20M4 6h4M4 18h4"/><circle cx="14" cy="7" r="4"/><circle cx="14" cy="18" r="4"/><path d="M14 7l-4 6 4 5 4-6-4-5M10 13h8"/>',
     suspension: '<path d="M2 12h3l2-6 4 12 4-12 3 6h4"/>',
   };
   const icon = textElement('span', `${className} part-symbol part-symbol-${kind}`, '');
@@ -733,6 +733,7 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   engine.dataset.ui = 'engine';
   const engineCard = document.createElement('div');
   engineCard.className = 'ride-engine-card';
+  engineCard.dataset.ui = 'engine-card';
   engineCard.append(textElement('span', 'ride-engine-icon', 'M'), engine);
   const position = textElement('span', 'visually-hidden', '');
   position.dataset.ui = 'position';
@@ -869,9 +870,12 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   const engineLoad = screen.querySelector<HTMLElement>('[data-ui="engine-load"]');
   if (engineLoad) {
     engineLoad.style.setProperty('--engine-load', `${snapshot.engineLoadPercent}%`);
+    engineLoad.style.setProperty('--engine-load-color', engineLoadColor(snapshot.engineLoadPercent));
     engineLoad.classList.toggle('is-maxed', snapshot.engineLoadPercent >= 100);
     engineLoad.setAttribute('aria-valuenow', String(snapshot.engineLoadPercent));
   }
+  screen.querySelector<HTMLElement>('[data-ui="engine-card"]')?.classList.toggle(
+    'is-maxed', snapshot.engineLoadPercent >= 100);
   const physics = screen.querySelector<HTMLButtonElement>('[data-ui="physics"]');
   if (physics) {
     physics.setAttribute('aria-pressed', String(snapshot.debugEnabled));
@@ -938,6 +942,23 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
       ? `${onboard.request.kind === 'passenger' ? 'Bajar' : 'Entregar carga'} en ${onboard.request.destinationStop}`
       : 'Completar entrega';
   }
+}
+
+function engineLoadColor(percent: number): string {
+  const stops = [
+    { at: 0, color: [98, 183, 255] },
+    { at: 35, color: [112, 213, 191] },
+    { at: 70, color: [242, 193, 78] },
+    { at: 100, color: [228, 49, 49] },
+  ] as const;
+  const value = Math.max(0, Math.min(100, percent));
+  const upperIndex = stops.findIndex((stop) => value <= stop.at);
+  const upper = stops[Math.max(1, upperIndex)] ?? stops[3];
+  const lower = stops[Math.max(0, (upperIndex < 0 ? stops.length - 1 : upperIndex) - 1)] ?? stops[0];
+  const progress = upper.at === lower.at ? 0 : (value - lower.at) / (upper.at - lower.at);
+  const channels = lower.color.map((channel, index) =>
+    Math.round(channel + ((upper.color[index] ?? channel) - channel) * progress));
+  return `rgb(${channels.join(', ')})`;
 }
 
 function setPassengerMessageColor(message: HTMLElement, snapshot: AppSnapshot): void {

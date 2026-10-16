@@ -41,14 +41,18 @@ export function createDemoWorld(): PhysicsWorld {
   return createMenuShowcaseWorld(0);
 }
 
-export function createMenuShowcaseWorld(variant: number): PhysicsWorld {
+export function createMenuShowcaseWorld(variant: number, requestedX = 3): PhysicsWorld {
   const terrain = MENU_TERRAINS[((variant % MENU_TERRAINS.length) + MENU_TERRAINS.length) %
     MENU_TERRAINS.length] ?? MENU_TERRAINS[0];
   if (!terrain) throw new Error('La portada requiere al menos un terreno.');
+  const positionX = 3 + ((((requestedX - 3) % 10) + 10) % 10);
+  const rearGroundY = menuTerrainHeightAt(terrain, positionX - 1.05);
+  const frontGroundY = menuTerrainHeightAt(terrain, positionX + 1.05);
+  const roadAngle = Math.atan2(frontGroundY - rearGroundY, 2.1);
   const body: RigidBody = {
     id: 'demo-combi',
-    position: { x: 3, y: 1.2 },
-    angleRadians: 0,
+    position: { x: positionX, y: (rearGroundY + frontGroundY) / 2 + 0.96 },
+    angleRadians: roadAngle,
     velocity: { x: 2.2, y: 0 },
     angularVelocity: 0,
     massKg: 700,
@@ -67,6 +71,16 @@ export function createMenuShowcaseWorld(variant: number): PhysicsWorld {
     },
   };
   return new PhysicsWorld(body, terrain);
+}
+
+function menuTerrainHeightAt(terrain: readonly TerrainSegment[], x: number): number {
+  const segment = terrain.find((candidate) => x >= candidate.start.x && x <= candidate.end.x) ??
+    terrain[0];
+  if (!segment) return 0;
+  const length = segment.end.x - segment.start.x;
+  if (length === 0) return segment.start.y;
+  const progress = Math.max(0, Math.min(1, (x - segment.start.x) / length));
+  return segment.start.y + (segment.end.y - segment.start.y) * progress;
 }
 
 export interface LevelOneEquipment {

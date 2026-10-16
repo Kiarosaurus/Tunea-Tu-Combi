@@ -476,11 +476,15 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'BOOT_COMPLETED' });
     const wallet = controller.snapshot.game.wallet;
     const firstTerrain = controller.worldSnapshot.terrain;
-    for (let index = 0; index < 121; index += 1) controller.update(1 / 60);
+    for (let index = 0; index < 119; index += 1) controller.update(1 / 60);
+    const positionBeforeChange = controller.snapshot.vehicleX;
+    for (let index = 0; index < 2; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.state).toBe('MENU');
     expect(controller.snapshot.menuShowcaseVariant).toBe(1);
     expect(controller.snapshot.menuShowcaseElapsedSeconds).toBeLessThan(0.1);
     expect(controller.worldSnapshot.terrain).not.toEqual(firstTerrain);
+    expect(controller.snapshot.vehicleX).toBeGreaterThanOrEqual(positionBeforeChange - 0.05);
+    expect(controller.snapshot.speedMps).toBeGreaterThan(0);
     expect(controller.snapshot.game.wallet).toBe(wallet);
   });
 

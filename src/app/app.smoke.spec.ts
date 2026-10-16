@@ -21,8 +21,13 @@ async function pickupStoppedRequest(page: Page, requestId: string, originX: numb
     if (currentX < originX - 3) {
       const approachX = currentX < originX - 6 ? originX - 6 : originX - 3;
       await page.keyboard.down('d');
-      await expect.poll(async () => Number(await canvas.getAttribute('data-vehicle-x')),
-        { timeout: 20_000, intervals: [50] }).toBeGreaterThanOrEqual(approachX);
+      await expect.poll(async () => {
+        const engineLoad = Number(await page.getByRole('meter', { name: 'Esfuerzo del motor' })
+          .getAttribute('aria-valuenow'));
+        if (engineLoad >= 82) await page.keyboard.up('d');
+        else await page.keyboard.down('d');
+        return Number(await canvas.getAttribute('data-vehicle-x'));
+      }, { timeout: 30_000, intervals: [50] }).toBeGreaterThanOrEqual(approachX);
       await page.keyboard.up('d');
       await engageControlledBrake(page, 100);
       await expect.poll(async () => Math.abs(Number.parseFloat(
@@ -64,13 +69,17 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
     vehicleX: Number((canvas as HTMLElement).dataset.vehicleX),
   }));
   const marker = (JSON.parse(await canvas.getAttribute('data-onboard-markers') ?? '[]') as
-    { id: string; color: string; destinationX: number; destinationStop: string;
+    { id: string; color: string; kind: 'passenger' | 'roofCargo' | 'scooter';
+      destinationX: number; destinationStop: string;
       remainingMeters: number }[]).find((item) => item.id === requestId);
   expect(marker?.destinationX).toBeGreaterThan(routePosition.vehicleX);
   expect(marker?.remainingMeters).toBeCloseTo(
     (marker?.destinationX ?? 0) - routePosition.vehicleX, 1);
   expect(marker?.destinationStop).toBe(targetRequest?.destinationStop);
   expect(marker?.color).toBe(targetRequest?.markerColor);
+  expect(marker?.kind).toBe(targetRequest?.kind);
+  const routeCardIds = JSON.parse(await canvas.getAttribute('data-route-card-request-ids') ?? '[]') as string[];
+  expect(routeCardIds.includes(requestId)).toBe(targetRequest?.kind === 'passenger');
   const fareNotice = JSON.parse(await canvas.getAttribute('data-fare-notice') ?? 'null') as
     { baseFare: number; surcharge: number; total: number } | null;
   expect(fareNotice?.total).toBe((fareNotice?.baseFare ?? 0) + (fareNotice?.surcharge ?? 0));
@@ -195,7 +204,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(refundSeat).toHaveCount(0);
 
   const engine = page.getByRole('button', { name: /Retirar Motor urbano de columna 7, fila 4/ });
-  const targetCell = page.getByRole('button', { name: 'Celda columna 4, fila 1' });
+  const targetCell = page.getByRole('button', { name: 'Celda columna 6, fila 1' });
   const engineBox = await engine.boundingBox();
   const targetBox = await targetCell.boundingBox();
   if (!engineBox || !targetBox) throw new Error('No se pudo medir el arrastre del taller.');
@@ -207,7 +216,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.locator('.grid-drag-preview')).toHaveClass(/is-valid/);
   await expect(page.locator('.pointer-drag-ghost')).toBeVisible();
   await page.mouse.up();
-  await expect(page.getByRole('button', { name: /Retirar Motor urbano de columna 4, fila 1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Retirar Motor urbano de columna 6, fila 1/ })).toBeVisible();
   await expect(page.locator('.grid-piece.is-loose')).toHaveCount(1);
   await page.getByRole('button', { name: /Retirar Rueda/ }).last().click();
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
@@ -246,9 +255,22 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect.poll(async () => Number(
     await page.getByRole('meter', { name: 'Esfuerzo del motor' }).getAttribute('aria-valuenow')))
     .toBeGreaterThan(0);
+  expect(await page.locator('.engine-load-fill').evaluate((element) =>
+    getComputedStyle(element).backgroundImage)).toBe('none');
   await expect.poll(async () => Number(
     await page.getByRole('meter', { name: 'Esfuerzo del motor' }).getAttribute('aria-valuenow')),
   { timeout: 7_000 }).toBe(100);
+  await expect(page.getByRole('meter', { name: 'Esfuerzo del motor' })).toHaveClass(/is-maxed/);
+  await expect(page.locator('[data-ui="engine-card"]')).toHaveClass(/is-maxed/);
+  expect(await page.getByRole('meter', { name: 'Esfuerzo del motor' }).evaluate((element) => ({
+    animation: getComputedStyle(element).animationName,
+    fill: getComputedStyle(element.querySelector('.engine-load-fill') as Element).backgroundColor,
+    fillAnimation: getComputedStyle(element.querySelector('.engine-load-fill') as Element).animationName,
+  }))).toEqual({
+    animation: 'engine-indicator-shake',
+    fill: 'rgb(228, 49, 49)',
+    fillAnimation: 'engine-fill-shake',
+  });
   await expect(page.locator('.engine-overload-warning')).toBeVisible();
   await expect(page.locator('.ride-toast')).toContainText('Motor al límite');
   await accelerate.dispatchEvent('pointerup', { pointerType: 'touch', button: 0 });
@@ -315,8 +337,12 @@ test('anima la portada con composiciones, pasajeros, terreno y cobros variables'
   const initialParts = await canvas.getAttribute('data-menu-showcase-parts');
   await expect.poll(async () => Number(await canvas.getAttribute('data-vehicle-x')),
     { timeout: 1_800 }).toBeGreaterThan(initialX + 0.2);
+  await expect(canvas).toHaveAttribute('data-menu-showcase-money-sprite', /png/);
+  const movingX = Number(await canvas.getAttribute('data-vehicle-x'));
   await expect.poll(async () => Number(await canvas.getAttribute('data-menu-showcase-variant')),
     { timeout: 3_000 }).toBe(1);
+  await expect.poll(async () => Number(await canvas.getAttribute('data-vehicle-x')))
+    .toBeGreaterThanOrEqual(movingX - 0.05);
   await expect(canvas).toHaveAttribute('data-menu-showcase-passengers', '3');
   await expect(canvas).toHaveAttribute('data-menu-showcase-fare', '4');
   expect(await canvas.getAttribute('data-menu-showcase-parts')).not.toBe(initialParts);

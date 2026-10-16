@@ -40,8 +40,8 @@ export const PART_FOOTPRINTS: Readonly<Record<PartKind, PartFootprint>> = {
   wheel: { columns: 2, rows: 1 },
   engine: { columns: 2, rows: 2 },
   seat: { columns: 1, rows: 2 },
-  roofRack: { columns: 1, rows: 2 },
-  rearCarrier: { columns: 2, rows: 1 },
+  roofRack: { columns: 3, rows: 1 },
+  rearCarrier: { columns: 1, rows: 2 },
   suspension: { columns: 3, rows: 1 },
 };
 
@@ -413,9 +413,10 @@ export function validateGridBuild(grid: readonly GridPlacement[]): string | null
 export function securedGridPlacements(grid: readonly GridPlacement[]): readonly GridPlacement[] {
   const secured = new Set<string>();
   for (const placement of grid) {
-    const mountedRoofRack = placement.kind === 'roofRack' &&
-      placement.row === 0 && placement.column <= 2;
-    if (mountedRoofRack || cellsFor(placement)
+    const mountedExteriorSupport =
+      (placement.kind === 'roofRack' && placement.row === 0) ||
+      (placement.kind === 'rearCarrier' && placement.column === 0);
+    if (mountedExteriorSupport || cellsFor(placement)
       .some((cell) => cell.row >= BUILD_GRID_ROWS - 2)) secured.add(placement.id);
   }
   let changed = true;
@@ -532,8 +533,11 @@ function validateGridPlacement(placement: GridPlacement, grid: readonly GridPlac
     throw new Error('La pieza debe alinearse con la cuadrícula.');
   }
   const footprint = PART_FOOTPRINTS[placement.kind];
-  if (placement.kind === 'roofRack' && (placement.row !== 0 || placement.column > 2)) {
-    throw new Error('La parrilla vertical solo va arriba, en la parte trasera de la combi.');
+  if (placement.kind === 'roofRack' && placement.row !== 0) {
+    throw new Error('La parrilla horizontal solo va arriba de la combi.');
+  }
+  if (placement.kind === 'rearCarrier' && placement.column !== 0) {
+    throw new Error('El portabicis vertical solo va en la parte trasera izquierda de la combi.');
   }
   if (placement.column < 0 || placement.row < 0 ||
     placement.column + footprint.columns > BUILD_GRID_COLUMNS ||

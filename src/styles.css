@@ -1206,6 +1206,7 @@ button:focus-visible {
 
 .engine-load-meter {
   --engine-load: 0%;
+  --engine-load-color: rgb(98, 183, 255);
   position: absolute;
   top: 112px;
   left: 8px;
@@ -1226,7 +1227,7 @@ button:focus-visible {
   height: var(--engine-load);
   min-height: 0;
   border-radius: 8px;
-  background: linear-gradient(0deg, #70d5bf 0%, #f2c14e 68%, #ff8066 100%);
+  background: var(--engine-load-color);
   transition: height 100ms linear;
 }
 
@@ -1242,7 +1243,31 @@ button:focus-visible {
 
 .engine-load-meter.is-maxed {
   border-color: #ff8066;
-  box-shadow: 0 0 0 3px rgba(255,128,102,0.22), 0 10px 24px rgba(0,0,0,0.3);
+  background: rgba(92, 13, 16, 0.94);
+  box-shadow: 0 0 0 3px rgba(255,128,102,0.34), 0 10px 24px rgba(0,0,0,0.3);
+  animation: engine-indicator-shake 90ms steps(2, end) infinite;
+}
+
+.engine-load-meter.is-maxed .engine-load-fill {
+  background: #e43131;
+  animation: engine-fill-shake 70ms steps(2, end) infinite;
+}
+
+.engine-load-meter.is-maxed .engine-load-icon {
+  color: #ffffff;
+}
+
+@keyframes engine-indicator-shake {
+  0%, 100% { transform: translate(0, 0) rotate(-0.7deg); }
+  25% { transform: translate(-2px, 1px) rotate(0.8deg); }
+  50% { transform: translate(2px, -1px) rotate(-0.6deg); }
+  75% { transform: translate(-1px, -1px) rotate(0.5deg); }
+}
+
+@keyframes engine-fill-shake {
+  0%, 100% { transform: translateX(0) scaleX(1); }
+  33% { transform: translateX(-1px) scaleX(0.96); }
+  66% { transform: translateX(1px) scaleX(1.04); }
 }
 
 .hud-label {
@@ -2503,6 +2528,13 @@ button:focus-visible {
   background: rgba(7,30,39,0.82) !important;
 }
 
+.ride-engine-card.is-maxed {
+  border-color: #ff4d4d !important;
+  background: rgba(126, 18, 22, 0.94) !important;
+  color: #ffffff;
+  animation: engine-indicator-shake 90ms steps(2, end) infinite;
+}
+
 .ride-engine-icon {
   display: grid;
   place-items: center;
@@ -2947,6 +2979,9 @@ button:focus-visible {
   .pickup-control.is-ready,
   .menu-game-title.is-entering,
   .menu-title-word,
+  .engine-load-meter.is-maxed,
+  .engine-load-meter.is-maxed .engine-load-fill,
+  .ride-engine-card.is-maxed,
   .explosion-layer.is-active,
   .engine-overload-warning.is-active,
   #app[data-app-state="RESULTS"] .explosion-layer.is-settled {
@@ -2970,8 +3005,11 @@ button:focus-visible {
 #app[data-reduced-motion="true"] .pickup-control.is-ready,
 #app[data-reduced-motion="true"] .menu-game-title.is-entering,
 #app[data-reduced-motion="true"] .menu-title-word,
-  #app[data-reduced-motion="true"] .explosion-layer.is-active,
-  #app[data-reduced-motion="true"] .engine-overload-warning.is-active,
+#app[data-reduced-motion="true"] .engine-load-meter.is-maxed,
+#app[data-reduced-motion="true"] .engine-load-meter.is-maxed .engine-load-fill,
+#app[data-reduced-motion="true"] .ride-engine-card.is-maxed,
+#app[data-reduced-motion="true"] .explosion-layer.is-active,
+#app[data-reduced-motion="true"] .engine-overload-warning.is-active,
 #app[data-reduced-motion="true"][data-app-state="RESULTS"] .explosion-layer.is-settled {
   animation: none !important;
 }

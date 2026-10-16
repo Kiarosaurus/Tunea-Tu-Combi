@@ -28,7 +28,7 @@ export const PART_CATALOG: readonly PartDefinition[] = [
   { kind: 'seat', name: 'Asiento', price: 15, massKg: 12, level: 1,
     function: 'Transporta una persona', effect: 'Capacidad +1', space: 'Interior' },
   { kind: 'roofRack', name: 'Parrilla de techo', price: 30, massKg: 28, level: 1,
-    function: 'Sostiene una nevera en la parte trasera', effect: 'Carga superior +1', space: 'Exterior superior trasero' },
+    function: 'Sostiene una nevera sobre el techo', effect: 'Carga superior +1', space: 'Exterior superior' },
   { kind: 'rearCarrier', name: 'Portabicis posterior', price: 35, massKg: 34, level: 1,
     function: 'Sostiene un scooter en la parte trasera', effect: 'Scooter +1', space: 'Exterior posterior' },
   { kind: 'suspension', name: 'Suspensión reforzada', price: 35, massKg: 24, level: 1,

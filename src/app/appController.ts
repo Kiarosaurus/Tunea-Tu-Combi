@@ -339,7 +339,8 @@ export class AppController {
       if (this.#menuShowcaseElapsedSeconds >= 2) {
         this.#menuShowcaseElapsedSeconds -= 2;
         this.#menuShowcaseVariant = (this.#menuShowcaseVariant + 1) % 4;
-        this.#world = createMenuShowcaseWorld(this.#menuShowcaseVariant);
+        this.#world = createMenuShowcaseWorld(this.#menuShowcaseVariant,
+          this.#world.snapshot().body.position.x);
       }
       return;
     }

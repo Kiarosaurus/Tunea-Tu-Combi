@@ -81,12 +81,16 @@ describe('taller y economía', () => {
     expect(() => placeGridPart(withExtraSeat, 'seat', 4, 0)).toThrow('ocupado');
   });
 
-  it('limita la parrilla a la zona superior trasera y la conecta al chasis', () => {
-    const purchased = buyPart(createInitialGameModel(), 'roofRack');
-    expect(() => placeGridPart(purchased, 'roofRack', 4, 0)).toThrow('parte trasera');
-    expect(() => placeGridPart(purchased, 'roofRack', 1, 2)).toThrow('arriba');
-    const mounted = placeGridPart(purchased, 'roofRack', 1, 0);
-    expect(gridVehicleCapacity(gridForModel(mounted)).roofCargo).toBe(1);
+  it('limita la parrilla al techo y el portabicis al extremo trasero izquierdo', () => {
+    const withRack = buyPart(createInitialGameModel(), 'roofRack');
+    expect(() => placeGridPart(withRack, 'roofRack', 1, 2)).toThrow('arriba');
+    const mountedRack = placeGridPart(withRack, 'roofRack', 4, 0);
+    expect(gridVehicleCapacity(gridForModel(mountedRack)).roofCargo).toBe(1);
+
+    const withCarrier = buyPart(mountedRack, 'rearCarrier');
+    expect(() => placeGridPart(withCarrier, 'rearCarrier', 1, 3)).toThrow('trasera izquierda');
+    const mountedCarrier = placeGridPart(withCarrier, 'rearCarrier', 0, 3);
+    expect(gridVehicleCapacity(gridForModel(mountedCarrier)).scooter).toBe(1);
   });
 
   it('mueve una pieza colocada sin duplicarla ni consumir inventario', () => {
