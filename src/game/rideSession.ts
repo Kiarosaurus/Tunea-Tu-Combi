@@ -177,8 +177,8 @@ export class RideSession {
 
 function capacityError(kind: RideRequest['kind']): string {
   if (kind === 'passenger') return 'Falta un asiento libre para este pasajero.';
-  if (kind === 'roofCargo') return 'Falta una parrilla libre para esta carga.';
-  return 'Falta un portacarga posterior libre para esta carga.';
+  if (kind === 'roofCargo') return 'Falta una parrilla de techo libre para este bulto.';
+  return 'Falta un portacarga posterior libre para este scooter.';
 }
 
 export function applyRideResult(

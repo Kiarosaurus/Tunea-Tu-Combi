@@ -28,6 +28,16 @@ describe('guardado local v1', () => {
     expect(repository.load()).toBeNull();
   });
 
+  it('acepta guardados anteriores sin la preferencia de avisos', () => {
+    const save = createSaveData(createInitialGameModel(), false);
+    const legacySettings = {
+      masterVolume: save.settings.masterVolume,
+      reducedMotion: save.settings.reducedMotion,
+      debugEnabled: save.settings.debugEnabled,
+    };
+    expect(isSaveDataV1({ ...save, settings: legacySettings })).toBe(true);
+  });
+
   it('preserva una cadena corrupta en memoria y permite recuperar el inicio', () => {
     const storage = memoryStorage();
     storage.setItem(SAVE_KEY, '{mal-json');

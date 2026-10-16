@@ -8,18 +8,48 @@ const REINFORCED_SUSPENSION: SuspensionParameters = {
   dampingNsPerM: 1800,
 };
 
-const DEMO_TERRAIN: readonly TerrainSegment[] = [
-  { start: { x: -2, y: 0 }, end: { x: 7, y: 0 } },
-  { start: { x: 7, y: 0 }, end: { x: 11, y: 0.45 } },
-  { start: { x: 11, y: 0.45 }, end: { x: 17, y: 0.45 } },
+const MENU_TERRAINS: readonly (readonly TerrainSegment[])[] = [
+  [
+    { start: { x: -2, y: 0 }, end: { x: 5, y: 0 } },
+    { start: { x: 5, y: 0 }, end: { x: 9, y: 0.75 } },
+    { start: { x: 9, y: 0.75 }, end: { x: 18, y: 0.75 } },
+  ],
+  [
+    { start: { x: -2, y: 0 }, end: { x: 4.5, y: 0 } },
+    { start: { x: 4.5, y: 0 }, end: { x: 8, y: 1.5 } },
+    { start: { x: 8, y: 1.5 }, end: { x: 12, y: 2.1 } },
+    { start: { x: 12, y: 2.1 }, end: { x: 18, y: 2.1 } },
+  ],
+  [
+    { start: { x: -2, y: 0 }, end: { x: 4, y: 0 } },
+    { start: { x: 4, y: 0 }, end: { x: 5.5, y: 0.55 } },
+    { start: { x: 5.5, y: 0.55 }, end: { x: 7, y: 0 } },
+    { start: { x: 7, y: 0 }, end: { x: 8.5, y: 0.85 } },
+    { start: { x: 8.5, y: 0.85 }, end: { x: 10.5, y: 0 } },
+    { start: { x: 10.5, y: 0 }, end: { x: 18, y: 0.35 } },
+  ],
+  [
+    { start: { x: -2, y: 0 }, end: { x: 5, y: 0 } },
+    { start: { x: 5, y: 0 }, end: { x: 7, y: 1.05 } },
+    { start: { x: 7, y: 1.05 }, end: { x: 10, y: 0.35 } },
+    { start: { x: 10, y: 0.35 }, end: { x: 13, y: 1.35 } },
+    { start: { x: 13, y: 1.35 }, end: { x: 18, y: 1.35 } },
+  ],
 ];
 
 export function createDemoWorld(): PhysicsWorld {
+  return createMenuShowcaseWorld(0);
+}
+
+export function createMenuShowcaseWorld(variant: number): PhysicsWorld {
+  const terrain = MENU_TERRAINS[((variant % MENU_TERRAINS.length) + MENU_TERRAINS.length) %
+    MENU_TERRAINS.length] ?? MENU_TERRAINS[0];
+  if (!terrain) throw new Error('La portada requiere al menos un terreno.');
   const body: RigidBody = {
     id: 'demo-combi',
-    position: { x: 3, y: 3.1 },
+    position: { x: 3, y: 1.2 },
     angleRadians: 0,
-    velocity: { x: 1.3, y: 0 },
+    velocity: { x: 2.2, y: 0 },
     angularVelocity: 0,
     massKg: 700,
     inertiaKgM2: 950,
@@ -29,8 +59,14 @@ export function createDemoWorld(): PhysicsWorld {
       { offset: { x: -1.05, y: -0.55 }, radius: 0.4, frictionCoefficient: 0.35 },
       { offset: { x: 1.05, y: -0.55 }, radius: 0.4, frictionCoefficient: 0.35 },
     ],
+    chassisCollider: {
+      offset: { x: 0, y: 0.405 },
+      halfWidth: 1.55,
+      halfHeight: 0.625,
+      frictionCoefficient: 0.38,
+    },
   };
-  return new PhysicsWorld(body, DEMO_TERRAIN);
+  return new PhysicsWorld(body, terrain);
 }
 
 export interface LevelOneEquipment {

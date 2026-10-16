@@ -21,6 +21,7 @@ export interface SaveDataV1 extends GameModel {
     readonly masterVolume: number;
     readonly reducedMotion: boolean;
     readonly debugEnabled: boolean;
+    readonly rideMessagesEnabled?: boolean;
   };
   readonly updatedAt: string;
 }
@@ -79,7 +80,7 @@ export function createSaveData(
   return {
     ...model,
     version: 1,
-    settings: { masterVolume: 1, reducedMotion: false, debugEnabled },
+    settings: { masterVolume: 1, reducedMotion: false, debugEnabled, rideMessagesEnabled: true },
     updatedAt,
   };
 }
@@ -97,6 +98,8 @@ export function isSaveDataV1(value: unknown): value is SaveDataV1 {
     !isUnitInterval(value.settings.masterVolume) ||
     typeof value.settings.reducedMotion !== 'boolean' ||
     typeof value.settings.debugEnabled !== 'boolean' ||
+    (value.settings.rideMessagesEnabled !== undefined &&
+      typeof value.settings.rideMessagesEnabled !== 'boolean') ||
     typeof value.updatedAt !== 'string' || Number.isNaN(Date.parse(value.updatedAt))) {
     return false;
   }

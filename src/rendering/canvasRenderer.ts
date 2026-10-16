@@ -96,6 +96,19 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
       canvas.dataset.engineVibration = String(snapshot.engineVibrationPercent);
       canvas.dataset.engineExploded = String(snapshot.engineExploded);
+      canvas.dataset.debugReadout = snapshot.debugEnabled ? JSON.stringify({
+        massKg: Math.round(world.body.massKg),
+        payloadMassKg: Math.round(world.payloadMassKg),
+        gravityMps2: Math.abs(world.gravity.y),
+        speedMps: Math.abs(world.body.velocity.x),
+        contactCount: world.contacts.length,
+        brokenJointCount: world.joints.filter((joint) => joint.broken).length,
+      }) : '';
+      canvas.dataset.menuShowcaseVariant = String(snapshot.menuShowcaseVariant);
+      canvas.dataset.menuShowcasePassengers = String(menuShowcasePassengerCount(snapshot.menuShowcaseVariant));
+      canvas.dataset.menuShowcaseFare = String(menuShowcaseFare(snapshot.menuShowcaseVariant));
+      canvas.dataset.menuShowcaseParts = JSON.stringify(menuShowcasePlacements(snapshot.menuShowcaseVariant)
+        .map((placement) => placement.kind));
       canvas.dataset.fareNotice = JSON.stringify(snapshot.fareNotice);
       canvas.dataset.fareNoticeLabel = snapshot.fareNotice
         ? formatFareNotice(snapshot.fareNotice) : '';
@@ -361,12 +374,14 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     context.globalAlpha = nearby ? 1 : 0.58;
     context.translate(point.x, point.y);
     context.fillStyle = 'rgba(5, 20, 31, 0.88)';
-    roundedRect(context, -56, -112, 112, 38, 9);
+    roundedRect(context, -62, -124, 124, 50, 9);
     context.fill();
     context.fillStyle = nearby ? '#fff5d9' : 'rgba(255,255,255,0.72)';
-    context.font = '800 10px system-ui';
+    context.font = '900 8px system-ui';
     context.textAlign = 'center';
-    context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -90);
+    context.fillText(requestTypeLabel(progress.request.kind), 0, -109);
+    context.font = '800 10px system-ui';
+    context.fillText(`A ${shortStopName(progress.request.destinationStop)}`, 0, -91);
     const occupiedSupport = onboardRequests.filter((item) =>
       item.request.kind === progress.request.kind).length;
     const missingRequirement = requestRequirement(progress.request.kind, capacity,
@@ -415,6 +430,12 @@ function requestRequirement(kind: 'passenger' | 'roofCargo' | 'scooter',
   }
   if (nearby && Math.abs(speedMps) > PICKUP_MAX_SPEED_MPS) return 'FRENA';
   return null;
+}
+
+function requestTypeLabel(kind: 'passenger' | 'roofCargo' | 'scooter'): string {
+  if (kind === 'roofCargo') return 'BULTO: PARRILLA + ASIENTO';
+  if (kind === 'scooter') return 'SCOOTER: PORTACARGA + ASIENTO';
+  return 'PASAJERO: ASIENTO';
 }
 
 function drawWaitingPerson(context: CanvasRenderingContext2D, x: number, clothing: string): void {
@@ -626,7 +647,7 @@ function positiveModulo(value: number, divisor: number): number {
 function drawRoadDust(context: CanvasRenderingContext2D, width: number, height: number,
   snapshot: AppSnapshot, world: WorldSnapshot): void {
   const speed = Math.abs(snapshot.speedMps);
-  if (speed < 0.6 || snapshot.state !== 'PLAYING') return;
+  if (speed < 0.6 || (snapshot.state !== 'PLAYING' && snapshot.state !== 'MENU')) return;
   const scale = Math.min(1, speed / 5.5);
   const baseX = width * 0.5 - worldScale(width, height) * 1.7;
   const groundY = terrainHeightAt(world.terrain, world.body.position.x);
@@ -687,7 +708,8 @@ function drawCombi(
   snapshot: AppSnapshot,
   world: WorldSnapshot,
 ): void {
-  const pixelsPerMeter = worldScale(width, height);
+  const menuScale = snapshot.state === 'MENU' && width < 620 ? 1.35 : 1;
+  const pixelsPerMeter = worldScale(width, height) * menuScale;
   const bodyWidth = 3.1 * pixelsPerMeter;
   const bodyHeight = 1.25 * pixelsPerMeter;
   const centerOfMass = world.body.centerOfMassOffset ?? { x: 0, y: 0 };
@@ -735,7 +757,9 @@ function drawCombi(
   context.lineWidth = 6;
   context.stroke();
 
-  const placements = gridForModel(snapshot.game);
+  const placements = snapshot.state === 'MENU'
+    ? menuShowcasePlacements(snapshot.menuShowcaseVariant)
+    : gridForModel(snapshot.game);
   const securedIds = new Set(securedGridPlacements(placements).map((placement) => placement.id));
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
   const rideElapsed = snapshot.ride
@@ -743,7 +767,13 @@ function drawCombi(
     : 0;
   drawInstalledParts(context, placements, securedIds, x, y, bodyWidth, bodyHeight,
     rideElapsed, world.body.angleRadians, snapshot.speedMps, snapshot.reducedMotion);
-  drawOnboardRequests(context, snapshot, x, y, bodyWidth, bodyHeight);
+  if (snapshot.state === 'MENU') {
+    drawMenuShowcaseOccupants(context, snapshot.menuShowcaseVariant, x, y, bodyWidth, bodyHeight);
+    drawMenuShowcaseFare(context, snapshot.menuShowcaseVariant,
+      snapshot.menuShowcaseElapsedSeconds, x, y, bodyWidth, bodyHeight);
+  } else {
+    drawOnboardRequests(context, snapshot, x, y, bodyWidth, bodyHeight);
+  }
   if (snapshot.engineExploded) drawEngineExplosion(context, x, y, bodyWidth, bodyHeight,
     snapshot.reducedMotion);
 
@@ -771,6 +801,120 @@ function drawCombi(
     context.stroke();
     context.fillStyle = '#182027';
   }
+  context.restore();
+}
+
+const MENU_SHOWCASE_BUILDS: readonly (readonly GridPlacement[])[] = [
+  [
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+    { id: 'menu-wheel-a1', kind: 'wheel', column: 1, row: 5 },
+    { id: 'menu-wheel-a2', kind: 'wheel', column: 7, row: 5 },
+    { id: 'menu-engine-a', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-seat-a', kind: 'seat', column: 5, row: 3 },
+  ],
+  [
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 2, row: 3 },
+    { id: 'menu-wheel-b1', kind: 'wheel', column: 1, row: 5 },
+    { id: 'menu-wheel-b2', kind: 'wheel', column: 7, row: 5 },
+    { id: 'menu-engine-b', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-seat-b1', kind: 'seat', column: 4, row: 3 },
+    { id: 'menu-seat-b2', kind: 'seat', column: 5, row: 3 },
+    { id: 'menu-seat-b3', kind: 'seat', column: 6, row: 3 },
+    { id: 'menu-suspension-b', kind: 'suspension', column: 4, row: 5 },
+  ],
+  [
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 3, row: 3 },
+    { id: 'menu-wheel-c1', kind: 'wheel', column: 1, row: 5 },
+    { id: 'menu-wheel-c2', kind: 'wheel', column: 7, row: 5 },
+    { id: 'menu-engine-c', kind: 'engine', column: 6, row: 3 },
+    { id: 'menu-seat-c1', kind: 'seat', column: 4, row: 3 },
+    { id: 'menu-seat-c2', kind: 'seat', column: 5, row: 3 },
+    { id: 'menu-roof-c', kind: 'roofRack', column: 3, row: 1 },
+  ],
+  [
+    { id: DRIVER_SEAT_ID, kind: 'seat', column: 2, row: 3 },
+    { id: 'menu-wheel-d1', kind: 'wheel', column: 1, row: 5 },
+    { id: 'menu-wheel-d2', kind: 'wheel', column: 7, row: 5 },
+    { id: 'menu-engine-d', kind: 'engine', column: 7, row: 3 },
+    { id: 'menu-seat-d1', kind: 'seat', column: 4, row: 3 },
+    { id: 'menu-seat-d2', kind: 'seat', column: 5, row: 3 },
+    { id: 'menu-seat-d3', kind: 'seat', column: 6, row: 3 },
+    { id: 'menu-roof-d', kind: 'roofRack', column: 3, row: 1 },
+    { id: 'menu-carrier-d', kind: 'rearCarrier', column: 0, row: 4 },
+    { id: 'menu-suspension-d', kind: 'suspension', column: 4, row: 5 },
+  ],
+];
+
+const MENU_SHOWCASE_PASSENGERS = [1, 3, 2, 4] as const;
+const MENU_SHOWCASE_FARES = [2, 4, 3, 5] as const;
+
+function menuShowcasePlacements(variant: number): readonly GridPlacement[] {
+  return MENU_SHOWCASE_BUILDS[variant % MENU_SHOWCASE_BUILDS.length] ?? MENU_SHOWCASE_BUILDS[0] ?? [];
+}
+
+function menuShowcasePassengerCount(variant: number): number {
+  return MENU_SHOWCASE_PASSENGERS[variant % MENU_SHOWCASE_PASSENGERS.length] ?? 1;
+}
+
+function menuShowcaseFare(variant: number): number {
+  return MENU_SHOWCASE_FARES[variant % MENU_SHOWCASE_FARES.length] ?? 2;
+}
+
+function drawMenuShowcaseOccupants(context: CanvasRenderingContext2D, variant: number,
+  bodyX: number, bodyY: number, bodyWidth: number, bodyHeight: number): void {
+  const passengerCount = menuShowcasePassengerCount(variant);
+  const colors = ['#62b7ff', '#ff8066', '#70d5bf', '#f2c14e'];
+  drawSeatedPerson(context, bodyX + bodyWidth * 0.23, bodyY + bodyHeight * 0.35,
+    bodyWidth, bodyHeight, '#f2c14e');
+  for (let index = 0; index < passengerCount; index += 1) {
+    drawSeatedPerson(context, bodyX + bodyWidth * (0.38 + index * 0.13),
+      bodyY + bodyHeight * 0.35, bodyWidth, bodyHeight, colors[index % colors.length] ?? '#62b7ff');
+  }
+  if (variant >= 2) {
+    context.fillStyle = variant === 2 ? '#d0bd86' : '#b86b45';
+    roundedRect(context, bodyX + bodyWidth * 0.43, bodyY - bodyHeight * 0.16,
+      bodyWidth * 0.23, bodyHeight * 0.2, 4);
+    context.fill();
+  }
+  if (variant === 3) {
+    context.strokeStyle = '#d6d8d5';
+    context.lineWidth = 3;
+    const scooterX = bodyX - bodyWidth * 0.12;
+    const scooterY = bodyY + bodyHeight * 0.73;
+    context.beginPath();
+    context.arc(scooterX, scooterY, bodyHeight * 0.08, 0, Math.PI * 2);
+    context.arc(scooterX + bodyWidth * 0.18, scooterY, bodyHeight * 0.08, 0, Math.PI * 2);
+    context.moveTo(scooterX, scooterY);
+    context.lineTo(scooterX + bodyWidth * 0.08, scooterY - bodyHeight * 0.2);
+    context.lineTo(scooterX + bodyWidth * 0.18, scooterY);
+    context.stroke();
+  }
+}
+
+function drawMenuShowcaseFare(context: CanvasRenderingContext2D, variant: number, elapsed: number,
+  bodyX: number, bodyY: number, bodyWidth: number, bodyHeight: number): void {
+  const progress = Math.max(0, Math.min(1, elapsed / 2));
+  const visibility = Math.sin(progress * Math.PI);
+  if (visibility <= 0.05) return;
+  const y = bodyY - bodyHeight * (0.48 + progress * 0.35);
+  context.save();
+  context.globalAlpha = visibility;
+  context.fillStyle = '#f2c14e';
+  context.strokeStyle = '#5d421b';
+  context.lineWidth = 2;
+  for (const offset of [-0.18, 0.18]) {
+    context.beginPath();
+    context.arc(bodyX + bodyWidth * (0.5 + offset), y, bodyHeight * 0.12, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+  }
+  context.fillStyle = '#ffe083';
+  context.font = `1000 ${Math.max(18, bodyHeight * 0.27)}px system-ui`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.shadowColor = 'rgba(0,0,0,0.5)';
+  context.shadowBlur = 8;
+  context.fillText(`+S/ ${menuShowcaseFare(variant)}`, bodyX + bodyWidth * 0.5, y);
   context.restore();
 }
 
@@ -1126,13 +1270,48 @@ function drawDebug(
     }
     context.stroke();
   }
-  context.fillStyle = '#fff5d9';
-  context.font = '12px system-ui';
-  context.fillText(
-    `Masa ${world.body.massKg} kg | g ${Math.abs(world.gravity.y)} m/s2`,
-    width * 0.58,
-    height * 0.77,
-  );
+  drawDebugReadout(context, width, height, world);
+  context.restore();
+}
+
+function drawDebugReadout(context: CanvasRenderingContext2D, width: number, height: number,
+  world: WorldSnapshot): void {
+  const compact = width < 620;
+  const panelWidth = compact ? 164 : 204;
+  const panelHeight = compact ? 150 : 166;
+  const x = width - panelWidth - (compact ? 58 : 68);
+  const y = Math.min(compact ? 92 : 82, Math.max(12, height - panelHeight - 12));
+  context.save();
+  context.fillStyle = 'rgba(5, 20, 31, 0.92)';
+  context.strokeStyle = '#58f2b4';
+  context.lineWidth = 2;
+  roundedRect(context, x, y, panelWidth, panelHeight, 13);
+  context.fill();
+  context.stroke();
+  context.textAlign = 'left';
+  context.fillStyle = '#58f2b4';
+  context.font = `900 ${compact ? 10 : 11}px system-ui`;
+  context.fillText('FÍSICA EN VIVO', x + 13, y + 21);
+  const brokenJoints = world.joints.filter((joint) => joint.broken).length;
+  const rows = [
+    ['Masa total', `${Math.round(world.body.massKg)} kg`],
+    ['Carga', `${Math.round(world.payloadMassKg)} kg`],
+    ['Gravedad', `${Math.abs(world.gravity.y).toFixed(2)} m/s2`],
+    ['Velocidad', `${Math.abs(world.body.velocity.x).toFixed(1)} m/s`],
+    ['Inclinación', `${Math.round(Math.abs(world.body.angleRadians) * 180 / Math.PI)} grados`],
+    ['Contactos', String(world.contacts.length)],
+    ['Uniones', brokenJoints > 0 ? `${brokenJoints} rotas` : `${world.joints.length} firmes`],
+  ] as const;
+  context.font = `700 ${compact ? 9 : 10}px system-ui`;
+  rows.forEach(([label, value], index) => {
+    const rowY = y + 42 + index * (compact ? 15 : 17);
+    context.fillStyle = 'rgba(255,255,255,0.62)';
+    context.fillText(label, x + 13, rowY);
+    context.fillStyle = '#fff5d9';
+    context.textAlign = 'right';
+    context.fillText(value, x + panelWidth - 13, rowY);
+    context.textAlign = 'left';
+  });
   context.restore();
 }
 

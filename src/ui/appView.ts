@@ -44,6 +44,10 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   explosion.className = 'explosion-layer';
   explosion.setAttribute('aria-hidden', 'true');
 
+  const engineWarning = document.createElement('div');
+  engineWarning.className = 'engine-overload-warning';
+  engineWarning.setAttribute('aria-hidden', 'true');
+
   const header = document.createElement('header');
   header.className = 'topbar';
   const routeBadge = textElement('span', 'prototype-badge', 'PRIMER RECORRIDO');
@@ -67,7 +71,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   const footer = document.createElement('footer');
   footer.className = 'footer-note';
   footer.textContent = 'Construye. Equilibra. Recorre Lima.';
-  root.replaceChildren(canvas, shade, explosion, header, screen, footer);
+  root.replaceChildren(canvas, shade, engineWarning, explosion, header, screen, footer);
 
   let visibleState = '';
   let menuIntroShown = false;
@@ -80,6 +84,8 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       root.dataset.reducedMotion = String(snapshot.reducedMotion);
       explosion.classList.toggle('is-active', snapshot.engineExploded);
       explosion.classList.toggle('is-settled', snapshot.engineExploded && snapshot.state === 'RESULTS');
+      engineWarning.classList.toggle('is-active', snapshot.state === 'PLAYING' &&
+        snapshot.engineLoadPercent >= 100 && !snapshot.engineExploded);
       routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
         ?? 'CAMPAÑA DE LIMA';
       debugButton.textContent = 'Física';
@@ -93,8 +99,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       if (snapshot.state !== 'WORKSHOP') workshopUi.selectedPart = null;
       visibleState = snapshot.state;
       const animateMenuIntro = snapshot.state === 'MENU' && !menuIntroShown;
-      const menuOptionsOpen = screen.querySelector<HTMLDetailsElement>('.menu-options')?.open ?? false;
-      screen.replaceChildren(createScreen(snapshot, dispatch, workshopUi, animateMenuIntro, menuOptionsOpen));
+      screen.replaceChildren(createScreen(snapshot, dispatch, workshopUi, animateMenuIntro));
       if (snapshot.state === 'MENU') menuIntroShown = true;
       if (snapshot.state === 'PLAYING') updatePlayingScreen(screen, snapshot);
       const heading = screen.querySelector<HTMLElement>('h1');
@@ -114,10 +119,10 @@ interface WorkshopUiState {
 }
 
 function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
-  workshopUi: WorkshopUiState, animateMenuIntro: boolean, menuOptionsOpen: boolean): HTMLElement {
+  workshopUi: WorkshopUiState, animateMenuIntro: boolean): HTMLElement {
   switch (snapshot.state) {
     case 'BOOT': return createBootScreen();
-    case 'MENU': return createMenuScreen(snapshot, dispatch, animateMenuIntro, menuOptionsOpen);
+    case 'MENU': return createMenuScreen(snapshot, dispatch, animateMenuIntro);
     case 'LEVEL_SELECT': return createLevelSelectScreen(snapshot, dispatch);
     case 'WORKSHOP': return createWorkshopScreen(snapshot, dispatch, workshopUi);
     case 'PLAYING': return createPlayingScreen(snapshot, dispatch);
@@ -146,9 +151,16 @@ function createBootScreen(): HTMLElement {
 }
 
 function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
-  animateIntro: boolean, optionsOpen: boolean): HTMLElement {
+  animateIntro: boolean): HTMLElement {
   const panel = panelElement('menu-panel');
-  const title = textElement('h1', 'hero-title menu-game-title', 'Tunea Tu Combi');
+  const title = document.createElement('h1');
+  title.className = 'hero-title menu-game-title';
+  title.setAttribute('aria-label', 'Tunea Tu Combi');
+  title.append(
+    textElement('span', 'menu-title-word menu-title-tunea', 'Tunea'),
+    textElement('span', 'menu-title-word menu-title-tu', 'Tu'),
+    textElement('span', 'menu-title-word menu-title-combi', 'Combi'),
+  );
   title.classList.toggle('is-entering', animateIntro);
   panel.append(
     title,
@@ -157,30 +169,18 @@ function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) =
   const play = actionButton('Jugar ahora', 'primary-action menu-play-action', () =>
     dispatch({ type: 'OPEN_LEVEL_SELECT' }));
   play.setAttribute('aria-label', 'Empezar recorrido');
-  panel.append(play);
-
-  const options = document.createElement('details');
-  options.className = 'menu-options';
-  options.open = optionsOpen;
-  const optionsLabel = textElement('summary', 'menu-options-label', 'Opciones');
-  const optionActions = document.createElement('div');
-  optionActions.className = 'menu-option-actions';
+  const physics = actionButton(snapshot.debugEnabled ? 'Ocultar físicas' : 'Mostrar físicas',
+    'secondary-action menu-physics-action', () => dispatch({ type: 'TOGGLE_DEBUG' }));
+  physics.setAttribute('aria-pressed', String(snapshot.debugEnabled));
+  physics.setAttribute('aria-label', snapshot.debugEnabled ? 'Ocultar físicas' : 'Mostrar físicas');
   const reset = actionButton('Borrar progreso', 'text-action', () => {
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
   reset.classList.add('reset-action');
-  const demo = actionButton('Demo', 'text-action', () => {
-    if (window.confirm('¿Reemplazar el progreso actual por un perfil de demostración?')) {
-      dispatch({ type: 'LOAD_DEMO_PROFILE' });
-    }
-  });
-  demo.setAttribute('aria-label', 'Cargar perfil de demostración');
-  const motion = actionButton(`Movimiento ${snapshot.reducedMotion ? 'suave' : 'normal'}`,
-    'text-action settings-action', () => dispatch({ type: 'TOGGLE_REDUCED_MOTION' }));
-  motion.setAttribute('aria-label', `Movimiento reducido: ${snapshot.reducedMotion ? 'sí' : 'no'}`);
-  optionActions.append(motion, demo, reset);
-  options.append(optionsLabel, optionActions);
-  panel.append(options);
+  const actions = document.createElement('div');
+  actions.className = 'menu-actions';
+  actions.append(play, physics, reset);
+  panel.append(actions);
   if (snapshot.message) panel.append(statusMessage(snapshot.message));
   return panel;
 }
@@ -662,7 +662,10 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     }
     trayGrid.append(card);
   }
-  inventory.append(trayGrid);
+  inventory.append(trayGrid,
+    textElement('p', 'cargo-support-help',
+      'Bulto de techo: parrilla + asiento para acompañante. Scooter: portacarga posterior + asiento para acompañante.'),
+  );
   builder.append(vehicleSection, inventory);
   panel.append(builder);
 
@@ -688,7 +691,7 @@ function partIcon(kind: PartKind): string {
 function shortPartName(kind: PartKind): string {
   const names: Readonly<Record<PartKind, string>> = {
     chassis: 'Chasis', wheel: 'Rueda', engine: 'Motor', seat: 'Asiento',
-    roofRack: 'Parrilla', rearCarrier: 'Carga', suspension: 'Suspensión',
+    roofRack: 'Parrilla', rearCarrier: 'Portacarga', suspension: 'Suspensión',
   };
   return names[kind];
 }
@@ -775,6 +778,8 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
   message.dataset.source = snapshot.messageSource;
+  message.dataset.pending = String(snapshot.pendingMessageCount);
+  message.hidden = !snapshot.message || !snapshot.rideMessagesEnabled;
   setPassengerMessageColor(message, snapshot);
   message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
     ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
@@ -878,9 +883,12 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   if (message) {
     message.textContent = snapshot.message;
     message.dataset.source = snapshot.messageSource;
+    message.dataset.pending = String(snapshot.pendingMessageCount);
+    message.hidden = !snapshot.message || !snapshot.rideMessagesEnabled;
     setPassengerMessageColor(message, snapshot);
     message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
-      ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
+      ? 'Pasajero' : 'Juego'}: ${snapshot.message}${snapshot.pendingMessageCount > 0
+      ? `. ${snapshot.pendingMessageCount} aviso pendiente.` : ''}`);
   }
   const fareReward = screen.querySelector<HTMLElement>('[data-ui="fare-reward"]');
   const fareRewardValue = screen.querySelector<HTMLElement>('[data-ui="fare-reward-value"]');
@@ -946,10 +954,19 @@ function createPausedScreen(snapshot: AppSnapshot,
     }),
     actionButton('Ir al taller', 'secondary-action', () => dispatch({ type: 'ABORT_RIDE' })),
   );
+  const messageToggle = actionButton(snapshot.rideMessagesEnabled
+    ? 'Avisos en ruta: activados'
+    : 'Avisos en ruta: desactivados', 'pause-message-toggle', () =>
+    dispatch({ type: 'TOGGLE_RIDE_MESSAGES' }));
+  messageToggle.setAttribute('aria-pressed', String(snapshot.rideMessagesEnabled));
+  messageToggle.setAttribute('aria-label', snapshot.rideMessagesEnabled
+    ? 'Desactivar avisos en ruta'
+    : 'Activar avisos en ruta');
   panel.append(
     textElement('h1', 'section-title', 'Pausa'),
     textElement('p', 'pause-level-name', level?.name ?? 'Recorrido'),
     actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
+    messageToggle,
     secondaryActions,
     actionButton('Salir al menú', 'text-action quiet-action pause-exit-action', () =>
       dispatch({ type: 'GO_MENU' })),

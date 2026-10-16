@@ -83,6 +83,8 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await expect(fareReward).toBeVisible();
   await expect(fareReward.locator('[data-ui="fare-reward-value"]')).toHaveText(fareLabel ?? '');
   await expect(fareReward.locator('img')).toHaveCount(2);
+  expect(await fareReward.locator('img').last().evaluate((image) =>
+    new DOMMatrix(getComputedStyle(image).transform).a)).toBeGreaterThan(0);
   const expectedSource = targetRequest?.kind === 'passenger' ? 'passenger' : 'system';
   await expect(page.locator('.ride-toast')).toHaveAttribute('data-source', expectedSource);
   await expect(page.locator('.ride-toast')).toHaveAttribute('aria-label',
@@ -133,19 +135,28 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.getByRole('heading', { name: 'Tunea Tu Combi' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Tunea Tu Combi' })).toBeFocused();
   await expect(page.locator('.menu-panel .primary-action')).toHaveCount(1);
-  await expect(page.locator('.menu-options')).toHaveJSProperty('open', false);
+  await expect(page.getByRole('button', { name: 'Demo' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Movimiento/ })).toHaveCount(0);
+  expect(await page.locator('.screen').evaluate((element) => getComputedStyle(element).scrollbarWidth))
+    .toBe('none');
   await expect(page.locator('.topbar')).toBeHidden();
   await expect(page.locator('canvas')).toBeVisible();
   await expect.poll(async () =>
     Number(await page.locator('canvas').getAttribute('data-physics-y')),
   ).toBeLessThan(1.5);
+  await page.getByRole('button', { name: 'Mostrar físicas' }).click();
+  await expect(page.getByRole('button', { name: 'Ocultar físicas' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => JSON.parse(await page.locator('canvas')
+    .getAttribute('data-debug-readout') ?? '{}')).toEqual(expect.objectContaining({
+    massKg: expect.any(Number),
+    payloadMassKg: expect.any(Number),
+    gravityMps2: 9.81,
+  }));
+  await page.getByRole('button', { name: 'Ocultar físicas' }).click();
+  await expect(page.getByRole('button', { name: 'Mostrar físicas' })).toHaveAttribute('aria-pressed', 'false');
 
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'LEVEL_SELECT');
-  await page.keyboard.press('F1');
-  await expect(page.getByRole('button', { name: 'Depuración: sí' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Depuración: sí' }).click();
-  await expect(page.getByRole('button', { name: 'Depuración: no' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: /Primer recorrido/ })).toBeEnabled();
   await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeDisabled();
   await expect(page.getByText(/Récord/)).toHaveCount(0);
@@ -157,6 +168,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await expect(page.getByRole('heading', { name: 'Métele mano' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'No hay un arreglo anterior para recuperar' })).toBeDisabled();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
+  await expect(page.getByText(/Bulto de techo: parrilla.*Scooter: portacarga posterior/)).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
   await expect(page.locator('.grid-piece')).toHaveCount(1);
   await expect(page.getByRole('button', { name: /Mover asiento del conductor/ })).toBeVisible();
@@ -235,13 +247,24 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await expect.poll(async () => Number(
     await page.getByRole('meter', { name: 'Esfuerzo del motor' }).getAttribute('aria-valuenow')))
     .toBeGreaterThan(0);
+  await expect.poll(async () => Number(
+    await page.getByRole('meter', { name: 'Esfuerzo del motor' }).getAttribute('aria-valuenow')),
+  { timeout: 7_000 }).toBe(100);
+  await expect(page.locator('.engine-overload-warning')).toBeVisible();
+  await expect(page.locator('.ride-toast')).toContainText('Motor al límite');
   await accelerate.dispatchEvent('pointerup', { pointerType: 'touch', button: 0 });
   await page.getByRole('button', { name: 'Pausa' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PAUSED');
   expect(await page.locator('.pause-panel').evaluate((element) =>
     element.scrollHeight <= element.clientHeight)).toBe(true);
   await expect(page.getByText('Primer recorrido', { exact: true })).toBeVisible();
-  await expect(page.locator('.pause-panel button')).toHaveCount(4);
+  await expect(page.locator('.pause-panel button')).toHaveCount(5);
+  const messageToggle = page.getByRole('button', { name: 'Desactivar avisos en ruta' });
+  await expect(messageToggle).toHaveAttribute('aria-pressed', 'true');
+  await messageToggle.click();
+  await expect(page.getByRole('button', { name: 'Activar avisos en ruta' }))
+    .toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Activar avisos en ruta' }).click();
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   page.once('dialog', async (dialog) => dialog.accept());
@@ -269,7 +292,6 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
-  await page.getByText('Opciones', { exact: true }).click();
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Borrar progreso' }).click();
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
@@ -286,21 +308,23 @@ test('recupera un guardado corrupto sin bloquear el menú', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Empezar recorrido' })).toBeEnabled();
 });
 
-test('carga un perfil de demostración y conserva preferencias accesibles', async ({ page }) => {
+test('anima la portada con composiciones, pasajeros, terreno y cobros variables', async ({ page }) => {
+  test.setTimeout(15_000);
   await page.goto(artifactUrl);
-  await page.getByText('Opciones', { exact: true }).click();
-  await page.getByRole('button', { name: 'Movimiento reducido: no' }).click();
-  await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
-  page.once('dialog', async (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Cargar perfil de demostración' }).click();
-  await page.reload();
-  await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
-  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
-  await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
-  await page.getByRole('button', { name: /Hora punta/ }).click();
-  await expect(page.getByText('Peso').locator('..')).toContainText('602 kg');
-  await expect(page.locator('.grid-piece')).toHaveCount(1);
-  await expect(page.locator('.grid-piece.is-loose')).toHaveCount(0);
+  const canvas = page.locator('canvas');
+  const initialX = Number(await canvas.getAttribute('data-vehicle-x'));
+  const initialParts = await canvas.getAttribute('data-menu-showcase-parts');
+  await expect.poll(async () => Number(await canvas.getAttribute('data-vehicle-x')),
+    { timeout: 1_800 }).toBeGreaterThan(initialX + 0.2);
+  await expect.poll(async () => Number(await canvas.getAttribute('data-menu-showcase-variant')),
+    { timeout: 3_000 }).toBe(1);
+  await expect(canvas).toHaveAttribute('data-menu-showcase-passengers', '3');
+  await expect(canvas).toHaveAttribute('data-menu-showcase-fare', '4');
+  expect(await canvas.getAttribute('data-menu-showcase-parts')).not.toBe(initialParts);
+  await expect.poll(async () => Number(await canvas.getAttribute('data-menu-showcase-variant')),
+    { timeout: 3_000 }).toBe(2);
+  await expect(canvas).toHaveAttribute('data-menu-showcase-passengers', '2');
+  await expect(canvas).toHaveAttribute('data-menu-showcase-fare', '3');
 });
 
 test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {

@@ -35,7 +35,7 @@ import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
 import { ARREST_X } from '../game/roadLimits';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
-import { createDemoWorld, createRideWorld } from '../physics/demoWorld';
+import { createDemoWorld, createMenuShowcaseWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
 import type { PhysicsWorld, WorldSnapshot } from '../physics/world';
 import { AppStateMachine, type AppState } from './appState';
@@ -66,6 +66,7 @@ export type AppAction =
   | { readonly type: 'RESET_PROGRESS' }
   | { readonly type: 'LOAD_DEMO_PROFILE' }
   | { readonly type: 'TOGGLE_REDUCED_MOTION' }
+  | { readonly type: 'TOGGLE_RIDE_MESSAGES' }
   | { readonly type: 'RESTART_RIDE' }
   | { readonly type: 'TOGGLE_DEBUG' }
   | { readonly type: 'GO_MENU' }
@@ -76,6 +77,7 @@ export interface AppSnapshot {
   readonly selectedLevelId: string | null;
   readonly debugEnabled: boolean;
   readonly reducedMotion: boolean;
+  readonly rideMessagesEnabled: boolean;
   readonly game: GameModel;
   readonly ride: RideSnapshot | null;
   readonly vehicleX: number;
@@ -84,6 +86,7 @@ export interface AppSnapshot {
   readonly message: string;
   readonly messageSource: MessageSource;
   readonly messageColor: string | null;
+  readonly pendingMessageCount: number;
   readonly won: boolean | null;
   readonly stars: number | null;
   readonly engineHealthPercent: number;
@@ -93,9 +96,22 @@ export interface AppSnapshot {
   readonly engineExploded: boolean;
   readonly saveRecovered: boolean;
   readonly fareNotice: FareQuote | null;
+  readonly menuShowcaseVariant: number;
+  readonly menuShowcaseElapsedSeconds: number;
 }
 
 export type MessageSource = 'system' | 'passenger';
+
+interface QueuedMessage {
+  readonly text: string;
+  readonly source: MessageSource;
+  readonly color: string | null;
+  readonly durationSeconds: number;
+}
+
+const SYSTEM_MESSAGE_SECONDS = 3.6;
+const PASSENGER_MESSAGE_SECONDS = 4.2;
+const MAX_QUEUED_MESSAGES = 5;
 
 export class AppController {
   readonly #machine = new AppStateMachine();
@@ -107,6 +123,7 @@ export class AppController {
   #selectedLevelId: string | null = null;
   #debugEnabled = false;
   #reducedMotion = false;
+  #rideMessagesEnabled = true;
   #throttle: -1 | 0 | 1 = 0;
   #braking = false;
   #brakeStrength = 0;
@@ -114,17 +131,22 @@ export class AppController {
   #message = '';
   #messageSource: MessageSource = 'system';
   #messageColor: string | null = null;
+  #messageRemainingSeconds = 0;
+  #messageQueue: QueuedMessage[] = [];
   #won: boolean | null = null;
   #stars: number | null = null;
   #engineHealth = 1;
   #engineLoad = 0;
   #engineOverloadSeconds = 0;
+  #engineOverloadWarningShown = false;
   #engineExploded = false;
   #explosionRemainingSeconds = 0;
   #chassisContactActive = false;
   #uiElapsed = 0;
   #fareNotice: FareQuote | null = null;
   #fareNoticeRemainingSeconds = 0;
+  #menuShowcaseVariant = 0;
+  #menuShowcaseElapsedSeconds = 0;
 
   constructor(repository: LocalSaveRepository) {
     this.#repository = repository;
@@ -141,6 +163,7 @@ export class AppController {
     } : createInitialGameModel();
     this.#debugEnabled = saved?.settings.debugEnabled ?? false;
     this.#reducedMotion = saved?.settings.reducedMotion ?? false;
+    this.#rideMessagesEnabled = saved?.settings.rideMessagesEnabled ?? true;
     if (repository.recovered) this.#message = 'Guardado inválido recuperado. Se inició una partida segura.';
     this.#machine.subscribe(() => this.#notify());
   }
@@ -152,6 +175,7 @@ export class AppController {
       selectedLevelId: this.#selectedLevelId,
       debugEnabled: this.#debugEnabled,
       reducedMotion: this.#reducedMotion,
+      rideMessagesEnabled: this.#rideMessagesEnabled,
       game: this.#model,
       ride: this.#ride?.snapshot ?? null,
       vehicleX: world.body.position.x,
@@ -162,6 +186,7 @@ export class AppController {
       message: this.#message,
       messageSource: this.#messageSource,
       messageColor: this.#messageColor,
+      pendingMessageCount: this.#messageQueue.length,
       won: this.#won,
       stars: this.#stars,
       engineHealthPercent: Math.round(this.#engineHealth * 100),
@@ -173,6 +198,8 @@ export class AppController {
       engineExploded: this.#engineExploded,
       saveRecovered: this.#repository.recovered,
       fareNotice: this.#fareNotice,
+      menuShowcaseVariant: this.#menuShowcaseVariant,
+      menuShowcaseElapsedSeconds: this.#menuShowcaseElapsedSeconds,
     };
   }
 
@@ -192,6 +219,7 @@ export class AppController {
   update(durationSeconds: number): void {
     if (this.#machine.state === 'PAUSED' || this.#machine.state === 'RESULTS') return;
     if (this.#machine.state === 'PLAYING' && this.#ride) {
+      this.#advanceMessage(durationSeconds);
       this.#fareNoticeRemainingSeconds = Math.max(0,
         this.#fareNoticeRemainingSeconds - durationSeconds);
       if (this.#fareNoticeRemainingSeconds === 0) this.#fareNotice = null;
@@ -209,6 +237,12 @@ export class AppController {
       this.#engineOverloadSeconds = engineLoad.overloaded
         ? this.#engineOverloadSeconds + durationSeconds
         : 0;
+      if (engineLoad.overloaded && !this.#engineOverloadWarningShown) {
+        this.#engineOverloadWarningShown = true;
+        this.#setMessage('Motor al límite: suelta el acelerador para evitar daños.');
+      } else if (!engineLoad.overloaded && this.#engineLoad < 0.92) {
+        this.#engineOverloadWarningShown = false;
+      }
       this.#engineHealth = Math.max(0, this.#engineHealth - engineLoad.damage);
       if (this.#engineHealth === 0) {
         this.#triggerEngineExplosion();
@@ -295,6 +329,17 @@ export class AppController {
       if (this.#uiElapsed >= 0.1) {
         this.#uiElapsed = 0;
         this.#notify();
+      }
+      return;
+    }
+    if (this.#machine.state === 'MENU') {
+      this.#menuShowcaseElapsedSeconds += durationSeconds;
+      this.#world.applyForce({ x: 720, y: 0 });
+      this.#world.step(durationSeconds);
+      if (this.#menuShowcaseElapsedSeconds >= 2) {
+        this.#menuShowcaseElapsedSeconds -= 2;
+        this.#menuShowcaseVariant = (this.#menuShowcaseVariant + 1) % 4;
+        this.#world = createMenuShowcaseWorld(this.#menuShowcaseVariant);
       }
       return;
     }
@@ -410,6 +455,12 @@ export class AppController {
         this.#save();
         this.#notify();
         return;
+      case 'TOGGLE_RIDE_MESSAGES':
+        this.#rideMessagesEnabled = !this.#rideMessagesEnabled;
+        if (!this.#rideMessagesEnabled) this.#clearRideMessages();
+        this.#save();
+        this.#notify();
+        return;
       case 'RESTART_RIDE':
         this.#restartRide();
         return;
@@ -486,6 +537,7 @@ export class AppController {
     this.#engineHealth = 1;
     this.#engineLoad = 0;
     this.#engineOverloadSeconds = 0;
+    this.#engineOverloadWarningShown = false;
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
@@ -515,8 +567,10 @@ export class AppController {
     if (this.#machine.state !== 'PLAYING' || !this.#ride) throw new Error('No hay recorrido activo.');
     const request = this.#ride.snapshot.requests.find((item) => item.request.id === requestId)?.request;
     const jointId = request ? payloadJoint(request.kind) : undefined;
-    if (jointId && !this.#world.snapshot().joints.some((joint) =>
-      joint.id === jointId && !joint.broken)) {
+    const supportJoint = jointId
+      ? this.#world.snapshot().joints.find((joint) => joint.id === jointId)
+      : undefined;
+    if (supportJoint?.broken) {
       throw new Error('El soporte de esta carga está roto. Reinicia o vuelve al taller.');
     }
     const world = this.#world.snapshot();
@@ -577,7 +631,8 @@ export class AppController {
     this.#stars = result.stars;
     this.#setMessage(result.stars === 3
       ? 'Tres estrellas. Nueva ruta desbloqueada.'
-      : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`);
+      : `${result.stars} estrella${result.stars === 1 ? '' : 's'}. Consigue tres para avanzar.`,
+    'system', null, true);
     this.#throttle = 0;
     this.#save();
     this.#machine.transition('RESULTS');
@@ -597,7 +652,7 @@ export class AppController {
     this.#stars = 0;
     this.#throttle = 0;
     this.#braking = false;
-    this.#setMessage('La policía detuvo la combi por salir de la ruta.');
+    this.#setMessage('La policía detuvo la combi por salir de la ruta.', 'system', null, true);
     this.#machine.transition('RESULTS');
   }
 
@@ -609,7 +664,7 @@ export class AppController {
     this.#stars = 0;
     this.#throttle = 0;
     this.#braking = false;
-    this.#setMessage('El motor explotó. La combi quedó fuera de servicio.');
+    this.#setMessage('El motor explotó. La combi quedó fuera de servicio.', 'system', null, true);
     this.#notify();
   }
 
@@ -620,8 +675,11 @@ export class AppController {
     this.#selectedLevelId = null;
     this.#ride = null;
     this.#world = createDemoWorld();
+    this.#menuShowcaseVariant = 0;
+    this.#menuShowcaseElapsedSeconds = 0;
     this.#debugEnabled = false;
     this.#reducedMotion = false;
+    this.#rideMessagesEnabled = true;
     this.#setMessage('Progreso borrado. Partida nueva lista.');
     this.#notify();
   }
@@ -632,6 +690,8 @@ export class AppController {
     this.#selectedLevelId = null;
     this.#ride = null;
     this.#world = createDemoWorld();
+    this.#menuShowcaseVariant = 0;
+    this.#menuShowcaseElapsedSeconds = 0;
     this.#setMessage('Perfil de demostración cargado: campaña y piezas disponibles.');
     this.#save();
     this.#notify();
@@ -639,6 +699,9 @@ export class AppController {
 
   #goBack(): void {
     if (this.#machine.state === 'LEVEL_SELECT') {
+      this.#world = createDemoWorld();
+      this.#menuShowcaseVariant = 0;
+      this.#menuShowcaseElapsedSeconds = 0;
       this.#machine.transition('MENU');
       return;
     }
@@ -658,6 +721,8 @@ export class AppController {
     this.#ride = null;
     this.#selectedLevelId = null;
     this.#world = createDemoWorld();
+    this.#menuShowcaseVariant = 0;
+    this.#menuShowcaseElapsedSeconds = 0;
     this.#throttle = 0;
     this.#braking = false;
     this.#brakeStrength = 0;
@@ -665,6 +730,7 @@ export class AppController {
     this.#engineHealth = 1;
     this.#engineLoad = 0;
     this.#engineOverloadSeconds = 0;
+    this.#engineOverloadWarningShown = false;
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
@@ -678,6 +744,7 @@ export class AppController {
       this.#repository.save({ ...save, settings: {
         ...save.settings,
         reducedMotion: this.#reducedMotion,
+        rideMessagesEnabled: this.#rideMessagesEnabled,
       } });
     } catch {
       this.#setMessage('No se pudo guardar en este navegador. Revisa el almacenamiento local.');
@@ -696,10 +763,51 @@ export class AppController {
     this.#notify();
   }
 
-  #setMessage(message: string, source: MessageSource = 'system', color: string | null = null): void {
-    this.#message = message;
-    this.#messageSource = source;
-    this.#messageColor = source === 'passenger' ? color : null;
+  #setMessage(message: string, source: MessageSource = 'system', color: string | null = null,
+    replace = false): void {
+    if (!message) {
+      this.#clearRideMessages();
+      return;
+    }
+    const entry: QueuedMessage = {
+      text: message,
+      source,
+      color: source === 'passenger' ? color : null,
+      durationSeconds: source === 'passenger' ? PASSENGER_MESSAGE_SECONDS : SYSTEM_MESSAGE_SECONDS,
+    };
+    if (this.#machine.state === 'PLAYING' && !this.#rideMessagesEnabled && !replace) return;
+    if (!replace && this.#machine.state === 'PLAYING' && this.#message) {
+      const duplicate = this.#message === entry.text ||
+        this.#messageQueue.some((queued) => queued.text === entry.text);
+      if (!duplicate && this.#messageQueue.length < MAX_QUEUED_MESSAGES) this.#messageQueue.push(entry);
+      return;
+    }
+    this.#messageQueue = [];
+    this.#showMessage(entry);
+  }
+
+  #advanceMessage(durationSeconds: number): void {
+    if (!this.#message) return;
+    this.#messageRemainingSeconds = Math.max(0, this.#messageRemainingSeconds - durationSeconds);
+    if (this.#messageRemainingSeconds > 0) return;
+    const next = this.#messageQueue.shift();
+    if (next) this.#showMessage(next);
+    else this.#clearRideMessages();
+  }
+
+  #showMessage(entry: QueuedMessage): void {
+    this.#message = entry.text;
+    this.#messageSource = entry.source;
+    this.#messageColor = entry.color;
+    this.#messageRemainingSeconds = entry.durationSeconds;
+  }
+
+  #clearRideMessages(): void {
+    this.#message = '';
+    this.#messageSource = 'system';
+    this.#messageColor = null;
+    this.#messageRemainingSeconds = 0;
+    this.#messageQueue = [];
   }
 }
 

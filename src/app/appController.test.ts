@@ -379,9 +379,34 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.engineLoadPercent).toBe(100);
     expect(controller.snapshot.engineVibrationPercent).toBeGreaterThan(0);
     expect(controller.snapshot.engineHealthPercent).toBeLessThan(100);
+    expect(controller.snapshot.message).toContain('Motor al límite');
     controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
     controller.update(1 / 60);
     expect(controller.snapshot.engineVibrationPercent).toBe(0);
+  });
+
+  it('muestra avisos por turnos, los retira y permite desactivarlos desde pausa', () => {
+    const storage = memoryStorage();
+    const controller = new AppController(new LocalSaveRepository(storage));
+    enterWorkshop(controller);
+    controller.dispatch({ type: 'START_RIDE' });
+    controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+    for (let index = 0; index < 310; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.message).toContain('Motor al límite');
+    controller.dispatch({ type: 'COLLECT_REQUEST', requestId: 'solicitud-inexistente' });
+    expect(controller.snapshot.message).toContain('Motor al límite');
+    expect(controller.snapshot.pendingMessageCount).toBe(1);
+    controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
+    for (let index = 0; index < 230; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.message).toContain('no está disponible');
+    for (let index = 0; index < 230; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.message).toBe('');
+
+    controller.dispatch({ type: 'PAUSE' });
+    controller.dispatch({ type: 'TOGGLE_RIDE_MESSAGES' });
+    expect(controller.snapshot.rideMessagesEnabled).toBe(false);
+    const reloaded = new AppController(new LocalSaveRepository(storage));
+    expect(reloaded.snapshot.rideMessagesEnabled).toBe(false);
   });
 
   it('explota al agotar el motor y termina en game over', () => {
@@ -443,6 +468,19 @@ describe('flujo vertical del primer recorrido', () => {
     const reloaded = new AppController(new LocalSaveRepository(storage));
     expect(reloaded.snapshot.game.unlockedLevel).toBe(5);
     expect(reloaded.snapshot.reducedMotion).toBe(true);
+  });
+
+  it('cambia la muestra de portada cada dos segundos sin tocar el progreso', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    const wallet = controller.snapshot.game.wallet;
+    const firstTerrain = controller.worldSnapshot.terrain;
+    for (let index = 0; index < 121; index += 1) controller.update(1 / 60);
+    expect(controller.snapshot.state).toBe('MENU');
+    expect(controller.snapshot.menuShowcaseVariant).toBe(1);
+    expect(controller.snapshot.menuShowcaseElapsedSeconds).toBeLessThan(0.1);
+    expect(controller.worldSnapshot.terrain).not.toEqual(firstTerrain);
+    expect(controller.snapshot.game.wallet).toBe(wallet);
   });
 
   it('reinicia un intento activo sin consumir progreso', () => {
