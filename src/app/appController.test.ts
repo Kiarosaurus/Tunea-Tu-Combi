@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LocalSaveRepository, type StorageLike } from '../persistence/saveRepository';
 import { createSaveData } from '../persistence/saveRepository';
 import { createDemoGameModel, createInitialGameModel, gridBuildStats, gridForModel, placeGridPart } from '../game/model';
+import { personColorForVariant } from '../game/requests';
 import { AppController } from './appController';
 
 function memoryStorage(): StorageLike {
@@ -157,6 +158,9 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.fareNotice?.total).toBeGreaterThan(0);
     expect(controller.snapshot.fareNotice?.surcharge).toBe(0);
     expect(controller.snapshot.messageSource).toBe('passenger');
+    const passenger = controller.snapshot.ride?.requests.find((item) =>
+      item.request.id === 'primer-pasajero')?.request;
+    expect(controller.snapshot.messageColor).toBe(personColorForVariant(passenger?.attendantVariant ?? ''));
     controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     for (let index = 0; index < 120; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.speedMps).toBeGreaterThan(1);
@@ -190,6 +194,7 @@ describe('flujo vertical del primer recorrido', () => {
     expect(collected).toBe(true);
     expect(controller.snapshot.message).toContain('no va a Gamarra');
     expect(controller.snapshot.messageSource).toBe('passenger');
+    expect(controller.snapshot.messageColor).toBe(personColorForVariant(request.attendantVariant));
     expect(controller.snapshot.fareNotice).toBeNull();
     const occupiedMass = controller.worldSnapshot.body.massKg;
     controller.dispatch({ type: 'SET_BRAKE', value: false });
@@ -203,6 +208,7 @@ describe('flujo vertical del primer recorrido', () => {
     }
     expect(controller.snapshot.message).toContain('No te pago');
     expect(controller.snapshot.messageSource).toBe('passenger');
+    expect(controller.snapshot.messageColor).toBe(personColorForVariant(request.attendantVariant));
     expect(controller.snapshot.ride?.deliveredRevenue).toBe(0);
     expect(controller.worldSnapshot.body.massKg).toBeLessThan(occupiedMass);
   });
@@ -371,7 +377,11 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
     for (let index = 0; index < 360; index += 1) controller.update(1 / 60);
     expect(controller.snapshot.engineLoadPercent).toBe(100);
+    expect(controller.snapshot.engineVibrationPercent).toBeGreaterThan(0);
     expect(controller.snapshot.engineHealthPercent).toBeLessThan(100);
+    controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
+    controller.update(1 / 60);
+    expect(controller.snapshot.engineVibrationPercent).toBe(0);
   });
 
   it('explota al agotar el motor y termina en game over', () => {
@@ -458,6 +468,9 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     controller.dispatch({ type: 'PAUSE' });
     controller.dispatch({ type: 'ABORT_RIDE' });
+    expect(controller.snapshot.state).toBe('WORKSHOP');
+    expect(controller.snapshot.message).toContain('Métele mano');
+    controller.dispatch({ type: 'BACK' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'subida-al-cerro' });
     expect(gridForModel(controller.snapshot.game)).toHaveLength(1);
     controller.dispatch({ type: 'RESTORE_LAST_BUILD' });

@@ -14,7 +14,7 @@ ni recursos de terceros.
 
 ## Inventario
 
-- `src/assets/money-reward.png`: 384 x 256 px, transparencia alfa, anclaje
+- `src/assets/money-reward.png`: 384 x 384 px, transparencia alfa, anclaje
   central. Grupo de monedas peruanas S/ 1, S/ 2 y S/ 5 con acabado mate,
   desgaste dibujado y paleta apagada para el aviso de cobro.
 

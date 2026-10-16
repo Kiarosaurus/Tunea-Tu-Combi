@@ -87,6 +87,10 @@ async function clickRequestOnRoute(page: Page, requestId: string): Promise<void>
   await expect(page.locator('.ride-toast')).toHaveAttribute('data-source', expectedSource);
   await expect(page.locator('.ride-toast')).toHaveAttribute('aria-label',
     targetRequest?.kind === 'passenger' ? /Pasajero:/ : /Juego:/);
+  await expect.poll(() => page.locator('.ride-toast').evaluate((element) =>
+    element.style.getPropertyValue('--passenger-color'))).toBe(
+    targetRequest?.kind === 'passenger' ? targetRequest.markerColor : '',
+  );
   await page.keyboard.down('d');
 }
 
@@ -126,20 +130,22 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
 
   await page.goto(artifactUrl);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
-  await expect(page.getByRole('heading', { name: 'Tu ruta. Tu máquina.' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Tu ruta. Tu máquina.' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Tunea Tu Combi' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tunea Tu Combi' })).toBeFocused();
+  await expect(page.locator('.menu-panel .primary-action')).toHaveCount(1);
+  await expect(page.locator('.menu-options')).toHaveJSProperty('open', false);
+  await expect(page.locator('.topbar')).toBeHidden();
   await expect(page.locator('canvas')).toBeVisible();
   await expect.poll(async () =>
     Number(await page.locator('canvas').getAttribute('data-physics-y')),
   ).toBeLessThan(1.5);
 
+  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
+  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'LEVEL_SELECT');
   await page.keyboard.press('F1');
   await expect(page.getByRole('button', { name: 'Depuración: sí' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Depuración: sí' }).click();
   await expect(page.getByRole('button', { name: 'Depuración: no' })).toHaveAttribute('aria-pressed', 'false');
-
-  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
-  await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'LEVEL_SELECT');
   await expect(page.getByRole('button', { name: /Primer recorrido/ })).toBeEnabled();
   await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeDisabled();
   await expect(page.getByText(/Récord/)).toHaveCount(0);
@@ -148,7 +154,7 @@ test('abre offline y recorre menú, niveles y taller sin errores', async ({ page
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
   await dismissGoals(page);
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'WORKSHOP');
-  await expect(page.getByRole('heading', { name: 'Arma tu combi' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Métele mano' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'No hay un arreglo anterior para recuperar' })).toBeDisabled();
   await expect(page.getByLabel('Cuadrícula libre de construcción de la combi')).toBeVisible();
   await expect(page.locator('.construction-cell.is-chassis')).toHaveCount(20);
@@ -232,7 +238,10 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await accelerate.dispatchEvent('pointerup', { pointerType: 'touch', button: 0 });
   await page.getByRole('button', { name: 'Pausa' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PAUSED');
+  expect(await page.locator('.pause-panel').evaluate((element) =>
+    element.scrollHeight <= element.clientHeight)).toBe(true);
   await expect(page.getByText('Primer recorrido', { exact: true })).toBeVisible();
+  await expect(page.locator('.pause-panel button')).toHaveCount(4);
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
   page.once('dialog', async (dialog) => dialog.accept());
@@ -245,9 +254,13 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   await clickRequestOnRoute(page, 'segundo-pasajero');
   await clickRequestOnRoute(page, 'tercer-pasajero');
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 40_000 });
+  expect(await page.locator('.results-panel').evaluate((element) =>
+    element.scrollHeight <= element.clientHeight)).toBe(true);
   await page.keyboard.up('d');
-  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '¡Buena ruta!' })).toBeVisible();
   await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
+  await expect(page.locator('.result-details')).toHaveJSProperty('open', false);
+  await expect(page.locator('.topbar')).toBeHidden();
   await page.getByRole('button', { name: /Siguiente: Subida al cerro/ }).click();
   const restoreBuild = page.getByRole('button', { name: 'Recuperar el arreglo del último nivel jugado' });
   await expect(restoreBuild).toBeEnabled();
@@ -256,10 +269,11 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
-  await expect(page.getByText(/Ruta 2/)).toBeVisible();
+  await page.getByText('Opciones', { exact: true }).click();
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Borrar progreso' }).click();
-  await expect(page.getByText(/^Ruta 1$/)).toBeVisible();
+  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
+  await expect(page.getByRole('button', { name: /Subida al cerro/ })).toBeDisabled();
   expect(errors).toEqual([]);
 });
 
@@ -274,11 +288,11 @@ test('recupera un guardado corrupto sin bloquear el menú', async ({ page }) => 
 
 test('carga un perfil de demostración y conserva preferencias accesibles', async ({ page }) => {
   await page.goto(artifactUrl);
+  await page.getByText('Opciones', { exact: true }).click();
   await page.getByRole('button', { name: 'Movimiento reducido: no' }).click();
   await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
   page.once('dialog', async (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Cargar perfil de demostración' }).click();
-  await expect(page.getByText(/Ruta 5/)).toBeVisible();
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-reduced-motion', 'true');
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
@@ -316,7 +330,8 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await completeRoute(page, [
     'mercado-uno-a', 'mercado-dos-a', 'mercado-tres-a', 'mercado-cuatro-a',
   ]);
-  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '¡Buena ruta!' })).toBeVisible();
+  await page.getByText('Ver detalles', { exact: true }).click();
   await expect(page.getByText('Masa máxima').locator('..')).toContainText('kg');
 
   await page.getByRole('button', { name: /Siguiente: Pista dañada/ }).click();
@@ -334,10 +349,12 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await completeRoute(page, [
     'punta-uno-a', 'punta-dos-a', 'punta-tres-a', 'punta-cuatro-a', 'punta-cinco-a',
   ]);
+  await page.getByText('Ver detalles', { exact: true }).click();
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
   await expect(page.getByText('Piezas sueltas').locator('..')).toContainText('0');
   await page.reload();
-  await expect(page.getByText(/Ruta 5/)).toBeVisible();
+  await page.getByRole('button', { name: 'Empezar recorrido' }).click();
+  await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
   const finalRevenue = await page.evaluate(() => {
     const raw = window.localStorage.getItem('tunea-tu-combi:save:v1');
     if (!raw) return 0;
@@ -357,6 +374,6 @@ async function completeRoute(page: Page, deliveries: readonly string[]): Promise
   }
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 45_000 });
   await page.keyboard.up('d');
-  await expect(page.getByRole('heading', { name: 'Ruta completa' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '¡Buena ruta!' })).toBeVisible();
   await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
 }

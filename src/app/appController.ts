@@ -30,7 +30,7 @@ import {
 } from '../game/model';
 import { applyRideResult, hasReachedDestination, RideSession,
   type RideSnapshot } from '../game/rideSession';
-import { generateRequests, type FareQuote } from '../game/requests';
+import { generateRequests, personColorForVariant, type FareQuote } from '../game/requests';
 import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
 import { ARREST_X } from '../game/roadLimits';
@@ -83,10 +83,12 @@ export interface AppSnapshot {
   readonly passengerCapacity: number;
   readonly message: string;
   readonly messageSource: MessageSource;
+  readonly messageColor: string | null;
   readonly won: boolean | null;
   readonly stars: number | null;
   readonly engineHealthPercent: number;
   readonly engineLoadPercent: number;
+  readonly engineVibrationPercent: number;
   readonly brakeEffectivenessPercent: number;
   readonly engineExploded: boolean;
   readonly saveRecovered: boolean;
@@ -111,10 +113,12 @@ export class AppController {
   #brakePressCount = 0;
   #message = '';
   #messageSource: MessageSource = 'system';
+  #messageColor: string | null = null;
   #won: boolean | null = null;
   #stars: number | null = null;
   #engineHealth = 1;
   #engineLoad = 0;
+  #engineOverloadSeconds = 0;
   #engineExploded = false;
   #explosionRemainingSeconds = 0;
   #chassisContactActive = false;
@@ -157,10 +161,14 @@ export class AppController {
         : vehicleCapacity(this.#model.workshopBuild).passenger,
       message: this.#message,
       messageSource: this.#messageSource,
+      messageColor: this.#messageColor,
       won: this.#won,
       stars: this.#stars,
       engineHealthPercent: Math.round(this.#engineHealth * 100),
       engineLoadPercent: Math.round(this.#engineLoad * 100),
+      engineVibrationPercent: this.#engineLoad >= 1
+        ? Math.round(Math.min(1, this.#engineOverloadSeconds / 8) * 100)
+        : 0,
       brakeEffectivenessPercent: this.#braking ? Math.round(this.#brakeStrength * 100) : 0,
       engineExploded: this.#engineExploded,
       saveRecovered: this.#repository.recovered,
@@ -198,6 +206,9 @@ export class AppController {
       const engineLoad = updateEngineLoad(this.#engineLoad,
         build.engineForceN > 0 && this.#throttle !== 0, durationSeconds);
       this.#engineLoad = engineLoad.load;
+      this.#engineOverloadSeconds = engineLoad.overloaded
+        ? this.#engineOverloadSeconds + durationSeconds
+        : 0;
       this.#engineHealth = Math.max(0, this.#engineHealth - engineLoad.damage);
       if (this.#engineHealth === 0) {
         this.#triggerEngineExplosion();
@@ -257,11 +268,15 @@ export class AppController {
         if (arrivals.length > 0) {
           const wrongRoute = arrivals.find((arrival) => !arrival.servedByRoute);
           if (wrongRoute) {
+            const speaker = this.#ride.snapshot.requests.find((progress) =>
+              progress.request.id === wrongRoute.requestId)?.request;
             this.#setMessage(`Te dije ${wrongRoute.destinationStop}. Esta combi no va. No te pago.`,
-              'passenger');
+              'passenger', personColorForVariant(speaker?.attendantVariant ?? ''));
           } else {
-            const totalFare = arrivals.reduce((total, arrival) => total + arrival.fare, 0);
-            this.#setMessage(`Pasajero en destino: S/ ${totalFare}. Asiento libre.`);
+            const count = arrivals.length;
+            this.#setMessage(count === 1
+              ? 'Se desocupó un asiento: bajó un pasajero.'
+              : `Se desocuparon ${count} asientos: bajaron ${count} pasajeros.`);
           }
         }
         this.#ride.advance(durationSeconds, world.body.position.x, world.body.angleRadians,
@@ -380,8 +395,8 @@ export class AppController {
         if (this.#machine.state !== 'PAUSED') throw new Error('Pausa antes de salir del recorrido.');
         this.#ride = null;
         this.#world = createDemoWorld();
-        this.#setMessage('Intento cancelado. Las compras se conservan.');
-        this.#machine.transition('RESULTS');
+        this.#setMessage('¡Ya pe! Métele mano a la combi y vuelve con todo.');
+        this.#machine.transition('WORKSHOP');
         this.#won = false;
         return;
       case 'RESET_PROGRESS':
@@ -470,6 +485,7 @@ export class AppController {
     this.#stars = null;
     this.#engineHealth = 1;
     this.#engineLoad = 0;
+    this.#engineOverloadSeconds = 0;
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
@@ -537,7 +553,8 @@ export class AppController {
         ? `Voy a ${request.destinationStop}.`
         : `Esta combi no va a ${request.destinationStop}. Me bajaré luego.`
       : 'Carga asegurada. Llévala a su destino.', request?.kind === 'passenger'
-      ? 'passenger' : 'system');
+      ? 'passenger' : 'system', request?.kind === 'passenger'
+      ? personColorForVariant(request.attendantVariant) : null);
     this.#notify();
   }
 
@@ -647,6 +664,7 @@ export class AppController {
     this.#brakePressCount = 0;
     this.#engineHealth = 1;
     this.#engineLoad = 0;
+    this.#engineOverloadSeconds = 0;
     this.#engineExploded = false;
     this.#explosionRemainingSeconds = 0;
     this.#chassisContactActive = false;
@@ -678,9 +696,10 @@ export class AppController {
     this.#notify();
   }
 
-  #setMessage(message: string, source: MessageSource = 'system'): void {
+  #setMessage(message: string, source: MessageSource = 'system', color: string | null = null): void {
     this.#message = message;
     this.#messageSource = source;
+    this.#messageColor = source === 'passenger' ? color : null;
   }
 }
 

@@ -40,6 +40,10 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   shade.className = 'scene-shade';
   shade.setAttribute('aria-hidden', 'true');
 
+  const explosion = document.createElement('div');
+  explosion.className = 'explosion-layer';
+  explosion.setAttribute('aria-hidden', 'true');
+
   const header = document.createElement('header');
   header.className = 'topbar';
   const routeBadge = textElement('span', 'prototype-badge', 'PRIMER RECORRIDO');
@@ -49,12 +53,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       !window.confirm('¿Salir de este recorrido?')) return;
     dispatch({ type: 'GO_MENU' });
   });
-  header.append(
-    textElement('span', 'brand-mark', 'TTC'),
-    textElement('span', 'brand-name', 'Tunea Tu Combi'),
-    routeBadge,
-    homeButton,
-  );
+  header.append(routeBadge, homeButton);
   const debugButton = actionButton('Depuración: no', 'debug-action', () =>
     dispatch({ type: 'TOGGLE_DEBUG' }));
   debugButton.title = 'Mostrar u ocultar física (F1)';
@@ -68,9 +67,10 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
   const footer = document.createElement('footer');
   footer.className = 'footer-note';
   footer.textContent = 'Construye. Equilibra. Recorre Lima.';
-  root.replaceChildren(canvas, shade, header, screen, footer);
+  root.replaceChildren(canvas, shade, explosion, header, screen, footer);
 
   let visibleState = '';
+  let menuIntroShown = false;
   const workshopUi: WorkshopUiState = { selectedPart: null };
   return {
     canvas,
@@ -78,6 +78,8 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       const stateChanged = snapshot.state !== visibleState;
       root.dataset.appState = snapshot.state;
       root.dataset.reducedMotion = String(snapshot.reducedMotion);
+      explosion.classList.toggle('is-active', snapshot.engineExploded);
+      explosion.classList.toggle('is-settled', snapshot.engineExploded && snapshot.state === 'RESULTS');
       routeBadge.textContent = LEVELS.find((level) => level.id === snapshot.selectedLevelId)?.name.toUpperCase()
         ?? 'CAMPAÑA DE LIMA';
       debugButton.textContent = 'Física';
@@ -90,7 +92,10 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       }
       if (snapshot.state !== 'WORKSHOP') workshopUi.selectedPart = null;
       visibleState = snapshot.state;
-      screen.replaceChildren(createScreen(snapshot, dispatch, workshopUi));
+      const animateMenuIntro = snapshot.state === 'MENU' && !menuIntroShown;
+      const menuOptionsOpen = screen.querySelector<HTMLDetailsElement>('.menu-options')?.open ?? false;
+      screen.replaceChildren(createScreen(snapshot, dispatch, workshopUi, animateMenuIntro, menuOptionsOpen));
+      if (snapshot.state === 'MENU') menuIntroShown = true;
       if (snapshot.state === 'PLAYING') updatePlayingScreen(screen, snapshot);
       const heading = screen.querySelector<HTMLElement>('h1');
       if (stateChanged && heading) {
@@ -109,10 +114,10 @@ interface WorkshopUiState {
 }
 
 function createScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
-  workshopUi: WorkshopUiState): HTMLElement {
+  workshopUi: WorkshopUiState, animateMenuIntro: boolean, menuOptionsOpen: boolean): HTMLElement {
   switch (snapshot.state) {
     case 'BOOT': return createBootScreen();
-    case 'MENU': return createMenuScreen(snapshot, dispatch);
+    case 'MENU': return createMenuScreen(snapshot, dispatch, animateMenuIntro, menuOptionsOpen);
     case 'LEVEL_SELECT': return createLevelSelectScreen(snapshot, dispatch);
     case 'WORKSHOP': return createWorkshopScreen(snapshot, dispatch, workshopUi);
     case 'PLAYING': return createPlayingScreen(snapshot, dispatch);
@@ -140,16 +145,26 @@ function createBootScreen(): HTMLElement {
   return panel;
 }
 
-function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void): HTMLElement {
+function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) => void,
+  animateIntro: boolean, optionsOpen: boolean): HTMLElement {
   const panel = panelElement('menu-panel');
+  const title = textElement('h1', 'hero-title menu-game-title', 'Tunea Tu Combi');
+  title.classList.toggle('is-entering', animateIntro);
   panel.append(
-    textElement('h1', 'hero-title', 'Tu ruta. Tu máquina.'),
+    title,
     textElement('p', 'hero-copy', 'Arma. Maneja. Cobra.'),
   );
-  const play = actionButton('Jugar', 'primary-action', () => dispatch({ type: 'OPEN_LEVEL_SELECT' }));
+  const play = actionButton('Jugar ahora', 'primary-action menu-play-action', () =>
+    dispatch({ type: 'OPEN_LEVEL_SELECT' }));
   play.setAttribute('aria-label', 'Empezar recorrido');
-  panel.append(play,
-    textElement('p', 'phase-note', `Ruta ${snapshot.game.unlockedLevel}`));
+  panel.append(play);
+
+  const options = document.createElement('details');
+  options.className = 'menu-options';
+  options.open = optionsOpen;
+  const optionsLabel = textElement('summary', 'menu-options-label', 'Opciones');
+  const optionActions = document.createElement('div');
+  optionActions.className = 'menu-option-actions';
   const reset = actionButton('Borrar progreso', 'text-action', () => {
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
@@ -163,12 +178,10 @@ function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) =
   const motion = actionButton(`Movimiento ${snapshot.reducedMotion ? 'suave' : 'normal'}`,
     'text-action settings-action', () => dispatch({ type: 'TOGGLE_REDUCED_MOTION' }));
   motion.setAttribute('aria-label', `Movimiento reducido: ${snapshot.reducedMotion ? 'sí' : 'no'}`);
-  panel.append(
-    motion,
-    demo,
-    reset,
-    statusMessage(snapshot.message),
-  );
+  optionActions.append(motion, demo, reset);
+  options.append(optionsLabel, optionActions);
+  panel.append(options);
+  if (snapshot.message) panel.append(statusMessage(snapshot.message));
   return panel;
 }
 
@@ -178,7 +191,7 @@ function createLevelSelectScreen(snapshot: AppSnapshot, dispatch: (action: AppAc
   heading.className = 'section-heading';
   heading.append(
     actionButton('Menú', 'secondary-action compact-action', () => dispatch({ type: 'BACK' })),
-    textElement('h1', 'section-title', 'Elige ruta'),
+    textElement('h1', 'section-title', '¿Qué ruta sale?'),
   );
 
   const grid = document.createElement('div');
@@ -225,7 +238,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   titleBlock.className = 'workshop-title-block';
   titleBlock.append(
     actionButton('Rutas', 'workshop-back', () => dispatch({ type: 'BACK' })),
-    textElement('h1', 'workshop-title', 'Arma tu combi'),
+    textElement('h1', 'workshop-title', 'Métele mano'),
     textElement('span', 'workshop-route', level?.name ?? 'Taller'),
   );
   const quickStats = document.createElement('dl');
@@ -260,7 +273,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   goalsPopup.setAttribute('aria-label', 'Metas de estrellas');
   const goalsCard = document.createElement('div');
   goalsCard.className = 'game-popup-card';
-  goalsCard.append(textElement('h2', 'popup-title', 'Tu misión'));
+  goalsCard.append(textElement('h2', 'popup-title', 'La chamba de hoy'));
   const goals = document.createElement('div');
   goals.className = 'star-goals';
   for (const [index, goal] of (level?.starGoals ?? [0, 0, 0]).entries()) {
@@ -275,7 +288,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     goalsPopup.hidden = true;
   });
   goalsCard.append(goals,
-    textElement('p', 'popup-note', '3 estrellas abren la siguiente ruta.'), closeGoals);
+    textElement('p', 'popup-note', 'Hazla linda: 3 estrellas y se abre otra ruta.'), closeGoals);
   goalsPopup.append(goalsCard);
   panel.append(goalsPopup);
 
@@ -749,14 +762,25 @@ function createPlayingScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
   delivery.dataset.ui = 'deliver';
   const pause = actionButton('II', 'ride-pause', () => dispatch({ type: 'PAUSE' }));
   pause.setAttribute('aria-label', 'Pausa');
+  const physics = actionButton('', 'ride-physics', () => dispatch({ type: 'TOGGLE_DEBUG' }));
+  physics.dataset.ui = 'physics';
+  physics.title = 'Mostrar u ocultar física (F1)';
+  physics.setAttribute('aria-label', snapshot.debugEnabled ? 'Física: activada' : 'Física: desactivada');
+  physics.setAttribute('aria-pressed', String(snapshot.debugEnabled));
+  physics.append(
+    textElement('span', 'axis axis-x', 'X'),
+    textElement('span', 'axis axis-y', 'Y'),
+    textElement('span', 'axis axis-z', 'Z'),
+  );
   const message = statusMessage(snapshot.message);
   message.classList.add('ride-toast');
   message.dataset.source = snapshot.messageSource;
+  setPassengerMessageColor(message, snapshot);
   message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
     ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
   panel.append(delivery, message,
     textElement('p', 'pickup-key-hint', 'ESPACIO RECOGER - ABAJO FRENAR'),
-    createDriveControls(dispatch), pause);
+    createDriveControls(dispatch), pause, physics);
   return panel;
 }
 
@@ -837,6 +861,11 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
     engineLoad.classList.toggle('is-maxed', snapshot.engineLoadPercent >= 100);
     engineLoad.setAttribute('aria-valuenow', String(snapshot.engineLoadPercent));
   }
+  const physics = screen.querySelector<HTMLButtonElement>('[data-ui="physics"]');
+  if (physics) {
+    physics.setAttribute('aria-pressed', String(snapshot.debugEnabled));
+    physics.setAttribute('aria-label', snapshot.debugEnabled ? 'Física: activada' : 'Física: desactivada');
+  }
   const onboardPassengers = ride.requests.filter((item) => item.status === 'onboard').length;
   setUiText(screen, 'capacity', `${onboardPassengers} / ${snapshot.passengerCapacity}`);
   const timeCard = screen.querySelector<HTMLElement>('.ride-time-card');
@@ -849,6 +878,7 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   if (message) {
     message.textContent = snapshot.message;
     message.dataset.source = snapshot.messageSource;
+    setPassengerMessageColor(message, snapshot);
     message.setAttribute('aria-label', `${snapshot.messageSource === 'passenger'
       ? 'Pasajero' : 'Juego'}: ${snapshot.message}`);
   }
@@ -896,22 +926,33 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   }
 }
 
+function setPassengerMessageColor(message: HTMLElement, snapshot: AppSnapshot): void {
+  if (snapshot.messageSource === 'passenger' && snapshot.messageColor) {
+    message.style.setProperty('--passenger-color', snapshot.messageColor);
+  } else {
+    message.style.removeProperty('--passenger-color');
+  }
+}
+
 function createPausedScreen(snapshot: AppSnapshot,
   dispatch: (action: AppAction) => void): HTMLElement {
   const panel = panelElement('pause-panel');
   const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
-  panel.append(
-    textElement('p', 'eyebrow', 'Tiempo detenido'),
-    textElement('h1', 'section-title', 'En pausa'),
-    textElement('p', 'pause-level-name', level?.name ?? 'Recorrido'),
-    actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
-    actionButton('Reiniciar intento', 'secondary-action', () => {
+  const secondaryActions = document.createElement('div');
+  secondaryActions.className = 'pause-secondary-actions';
+  secondaryActions.append(
+    actionButton('Reiniciar', 'secondary-action', () => {
       if (window.confirm('¿Reiniciar este intento desde el inicio?')) dispatch({ type: 'RESTART_RIDE' });
     }),
-    actionButton('Editar combi', 'secondary-action', () => {
-      if (window.confirm('¿Terminar este intento sin acreditar ingresos?')) dispatch({ type: 'ABORT_RIDE' });
-    }),
-    actionButton('Salir al menú', 'secondary-action', () => dispatch({ type: 'GO_MENU' })),
+    actionButton('Ir al taller', 'secondary-action', () => dispatch({ type: 'ABORT_RIDE' })),
+  );
+  panel.append(
+    textElement('h1', 'section-title', 'Pausa'),
+    textElement('p', 'pause-level-name', level?.name ?? 'Recorrido'),
+    actionButton('Continuar', 'primary-action', () => dispatch({ type: 'RESUME' })),
+    secondaryActions,
+    actionButton('Salir al menú', 'text-action quiet-action pause-exit-action', () =>
+      dispatch({ type: 'GO_MENU' })),
   );
   return panel;
 }
@@ -924,14 +965,17 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     : undefined;
   const panel = panelElement('results-panel');
   panel.classList.toggle('is-game-over', snapshot.engineExploded);
+  const resultMessage = snapshot.engineExploded
+    ? 'El motor necesita un descanso. Puedes intentarlo otra vez o ajustar tu combi.'
+    : snapshot.won
+      ? snapshot.message
+      : `Casi llegas. ${snapshot.message}`;
   panel.append(
-    textElement('p', 'eyebrow', snapshot.engineExploded ? 'Motor destruido' : 'Resultado del turno'),
     textElement('h1', 'section-title', snapshot.engineExploded
-      ? 'GAME OVER'
-      : snapshot.won ? 'Ruta completa' : 'Por poco'),
-    textElement('p', 'hero-copy', snapshot.message),
+      ? 'La combi se detuvo'
+      : snapshot.won ? '¡Buena ruta!' : 'Faltó poquito'),
+    textElement('p', 'hero-copy', resultMessage),
   );
-  if (snapshot.engineExploded) panel.append(textElement('div', 'game-over-explosion', 'BOOM'));
   const stars = document.createElement('div');
   stars.className = 'result-stars';
   stars.setAttribute('aria-label', `${snapshot.stars ?? 0} de 3 estrellas`);
@@ -939,32 +983,39 @@ function createResultsScreen(snapshot: AppSnapshot, dispatch: (action: AppAction
     stars.append(textElement('span',
       `result-star ${index <= (snapshot.stars ?? 0) ? 'is-earned' : ''}`, String(index)));
   }
-  const summary = document.createElement('dl');
-  summary.className = 'workshop-summary';
-  summary.append(
-    definitionItem('Entregado', `S/ ${snapshot.ride?.deliveredRevenue ?? 0}`),
-    definitionItem('Cuota', `S/ ${level?.quota ?? 0}`),
+  const score = document.createElement('dl');
+  score.className = 'result-score';
+  score.append(
+    definitionItem('Cobrado', `S/ ${snapshot.ride?.deliveredRevenue ?? 0}`),
+    definitionItem('Meta', `S/ ${level?.quota ?? 0}`),
+  );
+  const details = document.createElement('details');
+  details.className = 'result-details';
+  const detailsSummary = textElement('summary', 'result-details-label', 'Ver detalles');
+  const metrics = document.createElement('dl');
+  metrics.className = 'result-metrics';
+  metrics.append(
     definitionItem('Solicitudes', String(snapshot.ride?.deliveredCount ?? 0)),
     definitionItem('Masa máxima', `${snapshot.ride?.maximumPayloadMassKg ?? 0} kg`),
     definitionItem('Estabilidad', `${snapshot.ride?.stabilityPercent ?? 0} %`),
     definitionItem('Piezas sueltas', String(snapshot.ride?.lostPieces ?? 0)),
+    definitionItem('Semilla', snapshot.ride?.seed ?? 'sin intento'),
   );
+  details.append(detailsSummary, metrics);
   const actions = document.createElement('div');
   actions.className = 'result-actions';
   if (nextLevel) {
     actions.append(actionButton(`Siguiente: ${nextLevel.name}`, 'primary-action result-next', () =>
       dispatch({ type: 'SELECT_LEVEL', levelId: nextLevel.id })));
+  } else {
+    actions.append(actionButton('Intentar de nuevo', 'primary-action', () =>
+      dispatch({ type: 'REPLAY_RIDE' })));
   }
   actions.append(
-    actionButton('Reintentar con esta combi', nextLevel ? 'secondary-action' : 'primary-action', () =>
-      dispatch({ type: 'REPLAY_RIDE' })),
-    actionButton('Editar combi', 'secondary-action', () => dispatch({ type: 'RETRY' })),
-    actionButton('Elegir otra ruta', 'secondary-action', () => dispatch({ type: 'BACK' })),
-    actionButton('Salir al menú', 'secondary-action quiet-action', () => dispatch({ type: 'GO_MENU' })),
+    actionButton('Ajustar combi', 'secondary-action', () => dispatch({ type: 'RETRY' })),
+    actionButton('Ver rutas', 'text-action quiet-action', () => dispatch({ type: 'BACK' })),
   );
-  panel.append(stars, summary,
-    textElement('p', 'phase-note', `Semilla: ${snapshot.ride?.seed ?? 'sin intento'}`),
-    actions);
+  panel.append(stars, score, details, actions);
   return panel;
 }
 

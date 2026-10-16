@@ -21,6 +21,14 @@ export interface RideRequest {
 const PEOPLE_VARIANTS = ['azul', 'rojo', 'verde', 'amarillo'] as const;
 const CARGO_VARIANTS = ['cajas', 'canastas', 'sacos'] as const;
 export const CARGO_SURCHARGE = 2;
+const PERSON_COLORS: Readonly<Record<string, string>> = {
+  azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
+};
+const DEFAULT_PERSON_COLOR = '#62b7ff';
+
+export function personColorForVariant(variant: string): string {
+  return PERSON_COLORS[variant] ?? DEFAULT_PERSON_COLOR;
+}
 
 export interface FareQuote {
   readonly baseFare: number;

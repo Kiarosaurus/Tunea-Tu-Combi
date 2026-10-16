@@ -16,6 +16,7 @@ import {
   type GridPlacement,
 } from '../game/model';
 import { PICKUP_MAX_SPEED_MPS, REQUEST_NOTICE_RADIUS_METERS, STOP_RADIUS_METERS } from '../game/rideSession';
+import { personColorForVariant } from '../game/requests';
 import { POLICE_CAR_X } from '../game/roadLimits';
 import type { WorldSnapshot } from '../physics/world';
 
@@ -30,11 +31,6 @@ interface RequestHitArea {
   readonly width: number;
   readonly height: number;
 }
-
-const PEOPLE_COLORS: Readonly<Record<string, string>> = {
-  azul: '#62b7ff', rojo: '#ff8066', verde: '#70d5bf', amarillo: '#f2c14e',
-};
-const DEFAULT_PERSON_COLOR = '#62b7ff';
 
 export function createCanvasRenderer(canvas: HTMLCanvasElement,
   onPassengerClick?: (requestId: string) => void): CanvasRenderer {
@@ -98,6 +94,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
       canvas.dataset.routeCode = snapshot.state === 'PLAYING' ? TRANSIT_ROUTE.code : '';
       canvas.dataset.passengerCapacity = String(snapshot.passengerCapacity);
       canvas.dataset.engineHealth = String(snapshot.engineHealthPercent);
+      canvas.dataset.engineVibration = String(snapshot.engineVibrationPercent);
       canvas.dataset.engineExploded = String(snapshot.engineExploded);
       canvas.dataset.fareNotice = JSON.stringify(snapshot.fareNotice);
       canvas.dataset.fareNoticeLabel = snapshot.fareNotice
@@ -116,7 +113,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
         .filter((progress) => progress.status === 'onboard')
         .map((progress) => ({
           id: progress.request.id,
-          color: PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR,
+          color: personColorForVariant(progress.request.attendantVariant),
           destinationX: progress.request.destinationX,
           destinationStop: progress.request.destinationStop,
           remainingMeters: Math.max(0, progress.request.destinationX - snapshot.vehicleX),
@@ -129,7 +126,7 @@ export function createCanvasRenderer(canvas: HTMLCanvasElement,
           destinationStop: progress.request.destinationStop,
           kind: progress.request.kind,
           servedByRoute: progress.request.servedByRoute,
-          markerColor: PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR,
+          markerColor: personColorForVariant(progress.request.attendantVariant),
         })) ?? []);
       const hasWaitingPassenger = snapshot.ride?.requests.some((progress) =>
         progress.status === 'waiting' && progress.request.kind === 'passenger') ?? false;
@@ -214,7 +211,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   const progress = Math.max(0, Math.min(1, snapshot.vehicleX / (level?.finishX ?? 1)));
   const left = width >= 760 ? Math.max(400, width * 0.43) : 16;
   const right = width - (width >= 760 ? 34 : 16);
-  const boardWidth = Math.max(360, right - left);
+  const boardWidth = right - left;
   const top = width >= 760 ? 22 : 88;
   const lineLeft = left + 34;
   const lineRight = right - 34;
@@ -262,7 +259,7 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
     const targetProgress = Math.max(0, Math.min(1,
       passenger.request.destinationX / (level?.finishX ?? 1)));
     const targetX = lineLeft + (lineRight - lineLeft) * targetProgress;
-    context.fillStyle = PEOPLE_COLORS[passenger.request.attendantVariant] ?? DEFAULT_PERSON_COLOR;
+    context.fillStyle = personColorForVariant(passenger.request.attendantVariant);
     context.beginPath();
     context.moveTo(targetX, lineY - 13);
     context.lineTo(targetX - 6, lineY - 24);
@@ -277,11 +274,25 @@ function drawRouteBoard(context: CanvasRenderingContext2D, width: number,
   context.font = '800 10px system-ui';
   let cardX = left + 18;
   const cardY = top + 93;
-  for (const passenger of onboard) {
+  const cardStride = 140;
+  const reservedWidth = nextRequest ? 140 : 55;
+  const cardSlots = Math.max(1, Math.floor((boardWidth - reservedWidth) / cardStride));
+  const visibleCount = onboard.length > cardSlots ? Math.max(1, cardSlots - 1) : onboard.length;
+  for (const passenger of onboard.slice(0, visibleCount)) {
     drawPassengerCard(context, cardX, cardY, passenger.request.attendantVariant,
       passenger.request.destinationStop, passenger.request.destinationX, snapshot.vehicleX,
-      passenger.request.massKg, passenger.request.servedByRoute);
-    cardX += 154;
+      passenger.request.servedByRoute);
+    cardX += cardStride;
+  }
+  const hiddenCount = onboard.length - visibleCount;
+  if (hiddenCount > 0) {
+    context.fillStyle = 'rgba(242, 193, 78, 0.18)';
+    roundedRect(context, cardX, cardY - 17, 44, 34, 10);
+    context.fill();
+    context.fillStyle = '#f2c14e';
+    context.textAlign = 'center';
+    context.font = '950 13px system-ui';
+    context.fillText(`+${hiddenCount}`, cardX + 22, cardY + 5);
   }
   if (nextRequest) {
     context.textAlign = 'right';
@@ -307,25 +318,25 @@ function drawRouteCombiIcon(context: CanvasRenderingContext2D, x: number, y: num
 
 function drawPassengerCard(context: CanvasRenderingContext2D, x: number, y: number,
   variant: string, destination: string, destinationX: number, vehicleX: number,
-  massKg: number, servedByRoute: boolean): void {
+  servedByRoute: boolean): void {
   context.fillStyle = 'rgba(255,255,255,0.08)';
-  roundedRect(context, x, y - 17, 145, 34, 8);
+  roundedRect(context, x, y - 17, 132, 34, 8);
   context.fill();
-  context.fillStyle = PEOPLE_COLORS[variant] ?? DEFAULT_PERSON_COLOR;
+  context.fillStyle = personColorForVariant(variant);
   context.beginPath();
   context.arc(x + 17, y - 3, 7, 0, Math.PI * 2);
   context.fill();
   context.fillRect(x + 11, y + 4, 12, 8);
   context.fillStyle = '#fff5d9';
   context.textAlign = 'left';
-  context.font = '800 9px system-ui';
-  context.fillText(`Pidió ${shortStopName(destination)}`, x + 31, y - 2);
+  context.font = '850 10px system-ui';
+  context.fillText(shortStopName(destination), x + 31, y - 2);
   context.fillStyle = 'rgba(255,255,255,0.68)';
   context.font = '700 8px system-ui';
   const remainingMeters = Math.max(0, Math.ceil(destinationX - vehicleX));
   const detail = servedByRoute
-    ? `${remainingMeters} m  ${massKg} kg`
-    : `RUTA INCORRECTA  ${remainingMeters} m`;
+    ? `${remainingMeters} m`
+    : `RUTA INCORRECTA - ${remainingMeters} m`;
   context.fillText(detail, x + 31, y + 10);
 }
 
@@ -378,7 +389,7 @@ function drawWaitingRequests(context: CanvasRenderingContext2D, width: number, h
     }
     const personX = progress.request.kind === 'passenger' ? 0 : -22;
     drawWaitingPerson(context, personX,
-      PEOPLE_COLORS[progress.request.attendantVariant] ?? DEFAULT_PERSON_COLOR);
+      personColorForVariant(progress.request.attendantVariant));
     if (progress.request.kind !== 'passenger') {
       drawWaitingCargo(context, progress.request.kind, progress.request.visualVariant, 24, -4);
     }
@@ -683,14 +694,19 @@ function drawCombi(
   const x = -bodyWidth / 2 - centerOfMass.x * pixelsPerMeter;
   const y = -1.03 * pixelsPerMeter + centerOfMass.y * pixelsPerMeter;
   const center = worldToScreen(world.body.position, world, width, height);
+  const shakeStrength = snapshot.reducedMotion ? 0 : snapshot.engineVibrationPercent / 100;
+  const shakeTime = performance.now();
+  const shakeX = Math.sin(shakeTime * 0.19) * shakeStrength * 5;
+  const shakeY = Math.cos(shakeTime * 0.27) * shakeStrength * 3.5;
+  const renderCenter = { x: center.x + shakeX, y: center.y + shakeY };
 
-  if (snapshot.engineHealthPercent < 100) {
-    drawEngineSmoke(context, center.x + bodyWidth * 0.22, center.y - bodyHeight * 0.68,
-      snapshot.engineHealthPercent, snapshot.reducedMotion);
+  if (snapshot.engineHealthPercent < 100 || snapshot.engineVibrationPercent > 0) {
+    drawEngineSmoke(context, renderCenter.x + bodyWidth * 0.22, renderCenter.y - bodyHeight * 0.68,
+      snapshot.engineHealthPercent, snapshot.engineVibrationPercent, snapshot.reducedMotion);
   }
 
   context.save();
-  context.translate(center.x, center.y);
+  context.translate(renderCenter.x, renderCenter.y);
   context.rotate(-world.body.angleRadians);
   context.shadowColor = 'rgba(0, 0, 0, 0.32)';
   context.shadowBlur = 16;
@@ -829,8 +845,8 @@ function drawSeatedPerson(context: CanvasRenderingContext2D, x: number, y: numbe
 }
 
 function drawEngineSmoke(context: CanvasRenderingContext2D, x: number, y: number,
-  healthPercent: number, reducedMotion: boolean): void {
-  const severity = 1 - healthPercent / 100;
+  healthPercent: number, vibrationPercent: number, reducedMotion: boolean): void {
+  const severity = Math.max(1 - healthPercent / 100, vibrationPercent / 125);
   const phase = reducedMotion ? 0 : performance.now() / Math.max(180, 620 - severity * 360);
   const particleCount = 3 + Math.ceil(severity * 11);
   context.save();

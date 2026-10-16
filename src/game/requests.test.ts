@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../data/levels';
 import { routeSegmentForStop } from '../data/transitRoute';
 import { CARGO_SURCHARGE, generateLevelOneRequests, generateRequests, requestFare,
-  requestFareQuote } from './requests';
+  personColorForVariant, requestFareQuote } from './requests';
 
 describe('generación de solicitudes', () => {
   it('repite exactamente la secuencia para una misma semilla', () => {
@@ -38,6 +38,11 @@ describe('generación de solicitudes', () => {
 
   it('rechaza semillas vacías', () => {
     expect(() => generateLevelOneRequests('  ')).toThrow('semilla');
+  });
+
+  it('resuelve un color de camiseta estable para mensajes y marcadores', () => {
+    expect(personColorForVariant('rojo')).toBe('#ff8066');
+    expect(personColorForVariant('desconocido')).toBe('#62b7ff');
   });
 
   it('genera retos distintos para cerro y mercado', () => {
