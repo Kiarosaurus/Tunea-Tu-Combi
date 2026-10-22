@@ -8,6 +8,8 @@ const REINFORCED_SUSPENSION: SuspensionParameters = {
   dampingNsPerM: 1800,
 };
 
+export const MENU_SHOWCASE_SPEED_MPS = 6.2;
+
 const MENU_TERRAINS: readonly (readonly TerrainSegment[])[] = [
   [
     { start: { x: -2, y: 0 }, end: { x: 5, y: 0 } },
@@ -41,19 +43,17 @@ export function createDemoWorld(): PhysicsWorld {
   return createMenuShowcaseWorld(0);
 }
 
-export function createMenuShowcaseWorld(variant: number, requestedX = 3): PhysicsWorld {
+export function createMenuShowcaseWorld(variant: number): PhysicsWorld {
   const terrain = MENU_TERRAINS[((variant % MENU_TERRAINS.length) + MENU_TERRAINS.length) %
     MENU_TERRAINS.length] ?? MENU_TERRAINS[0];
   if (!terrain) throw new Error('La portada requiere al menos un terreno.');
-  const positionX = 3 + ((((requestedX - 3) % 10) + 10) % 10);
-  const rearGroundY = menuTerrainHeightAt(terrain, positionX - 1.05);
-  const frontGroundY = menuTerrainHeightAt(terrain, positionX + 1.05);
-  const roadAngle = Math.atan2(frontGroundY - rearGroundY, 2.1);
+  const positionX = 3;
+  const pose = menuRoadPose(terrain, positionX);
   const body: RigidBody = {
     id: 'demo-combi',
-    position: { x: positionX, y: (rearGroundY + frontGroundY) / 2 + 0.96 },
-    angleRadians: roadAngle,
-    velocity: { x: 2.2, y: 0 },
+    position: { x: positionX, y: pose.y },
+    angleRadians: pose.angleRadians,
+    velocity: { x: MENU_SHOWCASE_SPEED_MPS, y: 0 },
     angularVelocity: 0,
     massKg: 700,
     inertiaKgM2: 950,
@@ -71,6 +71,25 @@ export function createMenuShowcaseWorld(variant: number, requestedX = 3): Physic
     },
   };
   return new PhysicsWorld(body, terrain);
+}
+
+export function advanceMenuShowcaseWorld(world: PhysicsWorld, durationSeconds: number): void {
+  const snapshot = world.snapshot();
+  const positionX = snapshot.body.position.x + MENU_SHOWCASE_SPEED_MPS * durationSeconds;
+  const pose = menuRoadPose(snapshot.terrain, positionX);
+  world.setDisplayPose({ x: positionX, y: pose.y }, pose.angleRadians,
+    { x: MENU_SHOWCASE_SPEED_MPS, y: 0 });
+}
+
+function menuRoadPose(terrain: readonly TerrainSegment[], positionX: number):
+  { readonly y: number; readonly angleRadians: number } {
+  const rearGroundY = menuTerrainHeightAt(terrain, positionX - 1.05);
+  const frontGroundY = menuTerrainHeightAt(terrain, positionX + 1.05);
+  const angleRadians = Math.atan2(frontGroundY - rearGroundY, 2.1);
+  return {
+    y: (rearGroundY + frontGroundY) / 2 + 0.55 * Math.cos(angleRadians) + 0.4,
+    angleRadians,
+  };
 }
 
 function menuTerrainHeightAt(terrain: readonly TerrainSegment[], x: number): number {

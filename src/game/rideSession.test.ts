@@ -2,12 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../data/levels';
 import { createInitialGameModel } from './model';
 import { generateRequests, requestFare } from './requests';
-import { applyRideResult, RideSession, RIDE_DURATION_SECONDS } from './rideSession';
+import { applyRideResult, nearestPickupRequest, RideSession, RIDE_DURATION_SECONDS } from './rideSession';
 
 describe('primer recorrido', () => {
   const oneSeat = { passenger: 1, roofCargo: 0, scooter: 0 } as const;
   const allCapacity = { passenger: 1, roofCargo: 1, scooter: 1 } as const;
   const noCapacity = { passenger: 0, roofCargo: 0, scooter: 0 } as const;
+
+  it('elige al pasajero más cercano al centro para la recogida contextual', () => {
+    const examples = new RideSession().snapshot.requests;
+    const passenger = examples.find((progress) => progress.request.kind === 'passenger');
+    const cargo = examples.find((progress) => progress.request.kind !== 'passenger');
+    if (!passenger || !cargo) throw new Error('Faltan solicitudes para la prueba.');
+    const requests = [
+      { ...passenger, request: { ...passenger.request, id: 'lejano', originX: 13 } },
+      { ...cargo, request: { ...cargo.request, id: 'carga', originX: 10.2 } },
+      { ...passenger, request: { ...passenger.request, id: 'cercano', originX: 10.8 } },
+    ];
+    expect(nearestPickupRequest(requests, 10)?.request.id).toBe('cercano');
+    expect(nearestPickupRequest(requests, 20)).toBeUndefined();
+  });
 
   it('solo recoge con asiento y acredita al entregar en destino', () => {
     const ride = new RideSession();

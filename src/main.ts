@@ -1,6 +1,6 @@
 import { AppController } from './app/appController';
 import { FixedStepClock } from './core/fixedStepClock';
-import { hasReachedDestination, STOP_RADIUS_METERS } from './game/rideSession';
+import { hasReachedDestination, nearestPickupRequest } from './game/rideSession';
 import { LocalSaveRepository } from './persistence/saveRepository';
 import { createCanvasRenderer } from './rendering/canvasRenderer';
 import './styles.css';
@@ -23,7 +23,7 @@ controller.subscribe((snapshot) => {
 
 window.addEventListener('keydown', (event) => {
   const snapshot = controller.snapshot;
-  if (event.key === 'F1') {
+  if (event.key === 'F1' && (snapshot.state === 'PLAYING' || snapshot.state === 'PAUSED')) {
     event.preventDefault();
     controller.dispatch({ type: 'TOGGLE_DEBUG' });
   } else if (event.key === 'Escape') {
@@ -49,9 +49,7 @@ window.addEventListener('keydown', (event) => {
     } else if (event.key === ' ') {
       event.preventDefault();
       if (event.repeat) return;
-      const readyToCollect = snapshot.ride?.requests.find((progress) =>
-        progress.status === 'waiting' &&
-        Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS);
+      const readyToCollect = nearestPickupRequest(snapshot.ride?.requests ?? [], snapshot.vehicleX);
       if (readyToCollect) {
         controller.dispatch({ type: 'COLLECT_REQUEST', requestId: readyToCollect.request.id });
       }
@@ -62,9 +60,7 @@ window.addEventListener('keydown', (event) => {
         hasReachedDestination(snapshot.vehicleX, progress.request.destinationX));
       if (readyToDeliver) controller.dispatch({ type: 'DELIVER_REQUEST' });
       else {
-        const readyToCollect = snapshot.ride?.requests.find((progress) =>
-          progress.status === 'waiting' &&
-          Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS);
+        const readyToCollect = nearestPickupRequest(snapshot.ride?.requests ?? [], snapshot.vehicleX);
         if (readyToCollect) controller.dispatch({ type: 'COLLECT_REQUEST', requestId: readyToCollect.request.id });
       }
     }

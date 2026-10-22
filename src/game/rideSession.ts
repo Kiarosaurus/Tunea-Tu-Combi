@@ -22,6 +22,15 @@ export interface RequestProgress {
   readonly agreedFare: FareQuote | null;
 }
 
+export function nearestPickupRequest(requests: readonly RequestProgress[], vehicleX: number):
+  RequestProgress | undefined {
+  return requests.filter((progress) => progress.status === 'waiting' &&
+    Math.abs(vehicleX - progress.request.originX) <= STOP_RADIUS_METERS)
+    .sort((left, right) =>
+      Number(right.request.kind === 'passenger') - Number(left.request.kind === 'passenger') ||
+      Math.abs(left.request.originX - vehicleX) - Math.abs(right.request.originX - vehicleX))[0];
+}
+
 export interface CompletedDelivery {
   readonly requestId: string;
   readonly fare: number;

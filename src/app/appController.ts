@@ -35,7 +35,7 @@ import { calculateEngineDamage } from '../game/engineDamage';
 import { updateEngineLoad } from '../game/engineLoad';
 import { ARREST_X } from '../game/roadLimits';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
-import { createDemoWorld, createMenuShowcaseWorld, createRideWorld } from '../physics/demoWorld';
+import { advanceMenuShowcaseWorld, createDemoWorld, createMenuShowcaseWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
 import type { PhysicsWorld, WorldSnapshot } from '../physics/world';
 import { AppStateMachine, type AppState } from './appState';
@@ -147,6 +147,7 @@ export class AppController {
   #fareNoticeRemainingSeconds = 0;
   #menuShowcaseVariant = 0;
   #menuShowcaseElapsedSeconds = 0;
+  #menuDistanceM = 3;
 
   constructor(repository: LocalSaveRepository) {
     this.#repository = repository;
@@ -178,7 +179,7 @@ export class AppController {
       rideMessagesEnabled: this.#rideMessagesEnabled,
       game: this.#model,
       ride: this.#ride?.snapshot ?? null,
-      vehicleX: world.body.position.x,
+      vehicleX: this.#machine.state === 'MENU' ? this.#menuDistanceM : world.body.position.x,
       speedMps: world.body.velocity.x,
       passengerCapacity: this.#model.workshopGrid
         ? gridVehicleCapacity(gridForModel(this.#model)).passenger
@@ -334,13 +335,13 @@ export class AppController {
     }
     if (this.#machine.state === 'MENU') {
       this.#menuShowcaseElapsedSeconds += durationSeconds;
-      this.#world.applyForce({ x: 720, y: 0 });
-      this.#world.step(durationSeconds);
+      const beforeX = this.#world.snapshot().body.position.x;
+      advanceMenuShowcaseWorld(this.#world, durationSeconds);
+      this.#menuDistanceM += Math.max(0, this.#world.snapshot().body.position.x - beforeX);
       if (this.#menuShowcaseElapsedSeconds >= 2) {
         this.#menuShowcaseElapsedSeconds -= 2;
         this.#menuShowcaseVariant = (this.#menuShowcaseVariant + 1) % 4;
-        this.#world = createMenuShowcaseWorld(this.#menuShowcaseVariant,
-          this.#world.snapshot().body.position.x);
+        this.#world = createMenuShowcaseWorld(this.#menuShowcaseVariant);
       }
       return;
     }
@@ -678,6 +679,7 @@ export class AppController {
     this.#world = createDemoWorld();
     this.#menuShowcaseVariant = 0;
     this.#menuShowcaseElapsedSeconds = 0;
+    this.#menuDistanceM = 3;
     this.#debugEnabled = false;
     this.#reducedMotion = false;
     this.#rideMessagesEnabled = true;
@@ -693,6 +695,7 @@ export class AppController {
     this.#world = createDemoWorld();
     this.#menuShowcaseVariant = 0;
     this.#menuShowcaseElapsedSeconds = 0;
+    this.#menuDistanceM = 3;
     this.#setMessage('Perfil de demostración cargado: campaña y piezas disponibles.');
     this.#save();
     this.#notify();
@@ -703,6 +706,7 @@ export class AppController {
       this.#world = createDemoWorld();
       this.#menuShowcaseVariant = 0;
       this.#menuShowcaseElapsedSeconds = 0;
+      this.#menuDistanceM = 3;
       this.#machine.transition('MENU');
       return;
     }
@@ -724,6 +728,7 @@ export class AppController {
     this.#world = createDemoWorld();
     this.#menuShowcaseVariant = 0;
     this.#menuShowcaseElapsedSeconds = 0;
+    this.#menuDistanceM = 3;
     this.#throttle = 0;
     this.#braking = false;
     this.#brakeStrength = 0;

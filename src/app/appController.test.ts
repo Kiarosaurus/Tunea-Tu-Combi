@@ -488,6 +488,20 @@ describe('flujo vertical del primer recorrido', () => {
     expect(controller.snapshot.game.wallet).toBe(wallet);
   });
 
+  it('mantiene una marcha rápida y distancia creciente durante varios cambios de portada', () => {
+    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    let previousX = controller.snapshot.vehicleX;
+    for (let index = 0; index < 600; index += 1) {
+      controller.update(1 / 60);
+      const snapshot = controller.snapshot;
+      expect(snapshot.vehicleX).toBeGreaterThan(previousX);
+      expect(snapshot.speedMps).toBeGreaterThan(4.5);
+      previousX = snapshot.vehicleX;
+    }
+    expect(controller.snapshot.vehicleX).toBeGreaterThan(40);
+  });
+
   it('reinicia un intento activo sin consumir progreso', () => {
     const controller = new AppController(new LocalSaveRepository(memoryStorage()));
     enterWorkshop(controller);

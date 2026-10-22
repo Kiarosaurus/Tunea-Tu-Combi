@@ -478,11 +478,6 @@ button:focus-visible {
   font-size: 17px;
 }
 
-.menu-physics-action {
-  width: 100%;
-  min-height: 48px;
-}
-
 .menu-actions .reset-action {
   width: 100%;
   min-height: 36px;
@@ -2407,7 +2402,8 @@ button:focus-visible {
   color: #f2c14e;
 }
 
-.topbar-home[hidden] { display: none; }
+.topbar-home[hidden],
+.debug-action[hidden] { display: none; }
 
 .workshop-toolbar {
   grid-template-columns: minmax(220px, 1fr) auto auto auto auto;

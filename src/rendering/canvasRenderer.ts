@@ -889,7 +889,6 @@ const MENU_SHOWCASE_BUILDS: readonly (readonly GridPlacement[])[] = [
   ],
 ];
 
-const MENU_SHOWCASE_PASSENGERS = [1, 3, 2, 4] as const;
 const MENU_SHOWCASE_FARES = [2, 4, 3, 5] as const;
 
 function menuShowcasePlacements(variant: number): readonly GridPlacement[] {
@@ -897,7 +896,7 @@ function menuShowcasePlacements(variant: number): readonly GridPlacement[] {
 }
 
 function menuShowcasePassengerCount(variant: number): number {
-  return MENU_SHOWCASE_PASSENGERS[variant % MENU_SHOWCASE_PASSENGERS.length] ?? 1;
+  return passengerSeatPlacements(menuShowcasePlacements(variant)).length;
 }
 
 function menuShowcaseFare(variant: number): number {
@@ -906,13 +905,18 @@ function menuShowcaseFare(variant: number): number {
 
 function drawMenuShowcaseOccupants(context: CanvasRenderingContext2D, variant: number,
   bodyX: number, bodyY: number, bodyWidth: number, bodyHeight: number): void {
-  const passengerCount = menuShowcasePassengerCount(variant);
+  const placements = menuShowcasePlacements(variant);
+  const driverSeat = placements.find((placement) => placement.id === DRIVER_SEAT_ID);
+  const passengerSeats = passengerSeatPlacements(placements);
   const colors = ['#62b7ff', '#ff8066', '#70d5bf', '#f2c14e'];
-  drawSeatedPerson(context, bodyX + bodyWidth * 0.23, bodyY + bodyHeight * 0.35,
-    bodyWidth, bodyHeight, '#f2c14e');
-  for (let index = 0; index < passengerCount; index += 1) {
-    drawSeatedPerson(context, bodyX + bodyWidth * (0.38 + index * 0.13),
-      bodyY + bodyHeight * 0.35, bodyWidth, bodyHeight, colors[index % colors.length] ?? '#62b7ff');
+  if (driverSeat) {
+    const position = occupantPosition(driverSeat, bodyX, bodyY, bodyWidth, bodyHeight);
+    drawSeatedPerson(context, position.x, position.y, bodyWidth, bodyHeight, '#f2c14e');
+  }
+  for (const [index, seat] of passengerSeats.entries()) {
+    const position = occupantPosition(seat, bodyX, bodyY, bodyWidth, bodyHeight);
+    drawSeatedPerson(context, position.x, position.y, bodyWidth, bodyHeight,
+      colors[index % colors.length] ?? '#62b7ff');
   }
   if (variant >= 2) {
     context.fillStyle = variant === 2 ? '#d0bd86' : '#b86b45';

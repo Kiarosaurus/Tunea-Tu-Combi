@@ -17,7 +17,7 @@ import {
   validateGridBuild,
   type GridPlacement,
 } from '../game/model';
-import { hasReachedDestination, STOP_RADIUS_METERS } from '../game/rideSession';
+import { hasReachedDestination, nearestPickupRequest } from '../game/rideSession';
 import {
   dragAnchorFromElement,
   gridTargetFromPointer,
@@ -91,6 +91,7 @@ export function createAppView(root: HTMLElement, dispatch: (action: AppAction) =
       debugButton.textContent = 'Física';
       debugButton.setAttribute('aria-label', snapshot.debugEnabled ? 'Depuración: sí' : 'Depuración: no');
       debugButton.setAttribute('aria-pressed', String(snapshot.debugEnabled));
+      debugButton.hidden = snapshot.state !== 'PLAYING' && snapshot.state !== 'PAUSED';
       homeButton.hidden = snapshot.state === 'MENU' || snapshot.state === 'BOOT';
       if (snapshot.state === 'PLAYING' && visibleState === 'PLAYING') {
         updatePlayingScreen(screen, snapshot);
@@ -169,17 +170,13 @@ function createMenuScreen(snapshot: AppSnapshot, dispatch: (action: AppAction) =
   const play = actionButton('Jugar ahora', 'primary-action menu-play-action', () =>
     dispatch({ type: 'OPEN_LEVEL_SELECT' }));
   play.setAttribute('aria-label', 'Empezar recorrido');
-  const physics = actionButton(snapshot.debugEnabled ? 'Ocultar físicas' : 'Mostrar físicas',
-    'secondary-action menu-physics-action', () => dispatch({ type: 'TOGGLE_DEBUG' }));
-  physics.setAttribute('aria-pressed', String(snapshot.debugEnabled));
-  physics.setAttribute('aria-label', snapshot.debugEnabled ? 'Ocultar físicas' : 'Mostrar físicas');
   const reset = actionButton('Borrar progreso', 'text-action', () => {
     if (window.confirm('¿Borrar todo el progreso guardado?')) dispatch({ type: 'RESET_PROGRESS' });
   });
   reset.classList.add('reset-action');
   const actions = document.createElement('div');
   actions.className = 'menu-actions';
-  actions.append(play, physics, reset);
+  actions.append(play, reset);
   panel.append(actions);
   if (snapshot.message) panel.append(statusMessage(snapshot.message));
   return panel;
@@ -924,8 +921,7 @@ function updatePlayingScreen(screen: HTMLElement, snapshot: AppSnapshot): void {
   }
   const pickup = screen.querySelector<HTMLButtonElement>('[data-ui="pickup"]');
   if (pickup) {
-    const readyToCollect = ride.requests.find((progress) => progress.status === 'waiting' &&
-      Math.abs(snapshot.vehicleX - progress.request.originX) <= STOP_RADIUS_METERS);
+    const readyToCollect = nearestPickupRequest(ride.requests, snapshot.vehicleX);
     pickup.disabled = !readyToCollect;
     pickup.dataset.requestId = readyToCollect?.request.id ?? '';
     pickup.classList.toggle('is-ready', Boolean(readyToCollect));

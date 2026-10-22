@@ -199,6 +199,17 @@ export class PhysicsWorld {
     this.#body.torqueNm += cross(subtract(point, this.#body.position), force);
   }
 
+  setDisplayPose(position: Vector2, angleRadians: number, velocity: Vector2): void {
+    const next = { ...this.#body, position, angleRadians, velocity };
+    if (!isFiniteBody(next)) throw new Error('La pose visual debe permanecer dentro del mundo físico.');
+    this.#body.position = position;
+    this.#body.angleRadians = angleRadians;
+    this.#body.velocity = velocity;
+    this.#body.angularVelocity = 0;
+    this.#contacts = [];
+    this.#suspensionForces = [];
+  }
+
   attachPayload(id: string, massKg: number, offset: Vector2 = { x: 0, y: 0 }, jointId?: string): void {
     if (!id || this.#payloads.has(id) || !(massKg > 0) ||
       ![massKg, offset.x, offset.y].every(Number.isFinite)) {
