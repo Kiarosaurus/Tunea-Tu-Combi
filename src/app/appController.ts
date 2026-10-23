@@ -37,6 +37,7 @@ import { ARREST_X } from '../game/roadLimits';
 import { LocalSaveRepository, createSaveData } from '../persistence/saveRepository';
 import { advanceMenuShowcaseWorld, createDemoWorld, createMenuShowcaseWorld, createRideWorld } from '../physics/demoWorld';
 import { driveForceN, wheelLayoutPenalty } from '../physics/driveModel';
+import { obstacleImpactImpulse } from '../physics/roadHazards';
 import type { PhysicsWorld, WorldSnapshot } from '../physics/world';
 import { AppStateMachine, type AppState } from './appState';
 
@@ -120,6 +121,7 @@ export class AppController {
   #model: GameModel;
   #world: PhysicsWorld = createDemoWorld();
   #ride: RideSession | null = null;
+  readonly #crossedObstacles = new Set<string>();
   #selectedLevelId: string | null = null;
   #debugEnabled = false;
   #reducedMotion = false;
@@ -154,6 +156,7 @@ export class AppController {
     const saved = repository.load();
     this.#model = saved ? {
       wallet: saved.wallet,
+      budgetDebt: saved.budgetDebt ?? 0,
       ownedParts: saved.ownedParts,
       pendingPurchases: saved.pendingPurchases,
       workshopBuild: saved.workshopBuild,
@@ -265,7 +268,19 @@ export class AppController {
       });
       this.#world.applyForce({ x: driveForce, y: 0 });
       try {
+        const previousX = this.#world.snapshot().body.position.x;
         this.#world.step(durationSeconds);
+        const currentX = this.#world.snapshot().body.position.x;
+        const level = LEVELS.find((candidate) => candidate.id === this.#selectedLevelId);
+        for (const obstacle of level?.obstacles ?? []) {
+          if (this.#crossedObstacles.has(obstacle.id) || previousX > obstacle.x || currentX < obstacle.x) continue;
+          this.#crossedObstacles.add(obstacle.id);
+          const speed = this.#world.snapshot().body.velocity.x;
+          const impact = obstacleImpactImpulse(obstacle, speed);
+          const broken = this.#world.applyRoadImpact(impact);
+          if (broken > 0) this.#setMessage('¡Impacto fuerte! Se desprendieron piezas de la combi.');
+          else if (impact > 0) this.#setMessage('¡Impacto! Frena ante los obstáculos del camino.');
+        }
         for (const requestId of this.#world.snapshot().lostPayloadIds) {
           if (this.#ride.lose(requestId)) {
             const request = this.#ride.snapshot.requests.find((item) =>
@@ -503,6 +518,9 @@ export class AppController {
     if (this.#machine.state !== 'WORKSHOP') throw new Error('Abre el taller antes de iniciar.');
     const level = LEVELS.find((candidate) => candidate.id === this.#selectedLevelId);
     if (!level) throw new Error('Este recorrido no está disponible.');
+    if ((this.#model.budgetDebt ?? 0) > 0) {
+      throw new Error(`Faltan S/ ${this.#model.budgetDebt} para financiar la combi.`);
+    }
     const issue = this.#model.workshopGrid
       ? validateGridBuild(gridForModel(this.#model))
       : validateBuild(this.#model.workshopBuild);
@@ -530,6 +548,7 @@ export class AppController {
     });
     this.#ride = new RideSession(level.seed, generateRequests(level.id, level.seed),
       level.durationSeconds, level.finishX, stats.loosePieces ?? 0);
+    this.#crossedObstacles.clear();
     this.#throttle = 0;
     this.#braking = false;
     this.#brakeStrength = 0;

@@ -226,7 +226,10 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
   const stats = gridBuildStats(grid);
   const capacity = gridVehicleCapacity(grid);
   const securedIds = new Set(securedGridPlacements(grid).map((item) => item.id));
-  const buildIssue = validateGridBuild(grid);
+  const budgetDebt = snapshot.game.budgetDebt ?? 0;
+  const buildIssue = budgetDebt > 0
+    ? `Faltan S/ ${budgetDebt}. Retira y reembolsa piezas para salir a rodar.`
+    : validateGridBuild(grid);
   const panel = panelElement('workshop-panel');
   const goalsPopup = document.createElement('section');
   const toolbar = document.createElement('section');
@@ -260,6 +263,7 @@ function createWorkshopScreen(snapshot: AppSnapshot, dispatch: (action: AppActio
     dispatch({ type: 'START_RIDE' }));
   startButton.setAttribute('aria-label', 'Iniciar recorrido de 60 segundos');
   startButton.disabled = Boolean(buildIssue);
+  startButton.classList.toggle('is-over-budget', budgetDebt > 0);
   toolbar.append(titleBlock, quickStats, restoreButton, goalsButton, startButton);
   panel.append(toolbar);
 

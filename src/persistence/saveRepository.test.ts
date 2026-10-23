@@ -38,6 +38,16 @@ describe('guardado local v1', () => {
     expect(isSaveDataV1({ ...save, settings: legacySettings })).toBe(true);
   });
 
+  it('persiste un arreglo recuperado con deuda y rechaza déficits inválidos', () => {
+    const storage = memoryStorage();
+    const repository = new LocalSaveRepository(storage);
+    const save = createSaveData({ ...createInitialGameModel(), wallet: 0, budgetDebt: 15 }, false);
+    repository.save(save);
+    expect(repository.load()?.budgetDebt).toBe(15);
+    expect(isSaveDataV1({ ...save, budgetDebt: -1 })).toBe(false);
+    expect(isSaveDataV1({ ...save, budgetDebt: 1.5 })).toBe(false);
+  });
+
   it('acepta la parrilla horizontal de guardados anteriores', () => {
     const initial = createInitialGameModel();
     const legacyRack = createSaveData({

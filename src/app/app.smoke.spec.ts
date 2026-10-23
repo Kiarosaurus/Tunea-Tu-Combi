@@ -18,8 +18,11 @@ async function pickupStoppedRequest(page: Page, requestId: string, originX: numb
   const canvas = page.locator('canvas');
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const currentX = Number(await canvas.getAttribute('data-vehicle-x'));
-    if (currentX < originX - 3) {
-      const approachX = currentX < originX - 6 ? originX - 6 : originX - 3;
+    const onboardDestination = Number(await canvas.getAttribute('data-onboard-destination-x'));
+    const approachGap = onboardDestination > originX - 3 && onboardDestination < originX
+      ? 1.7 : 3;
+    if (currentX < originX - approachGap) {
+      const approachX = currentX < originX - 6 ? originX - 6 : originX - approachGap;
       await page.keyboard.down('d');
       await expect.poll(async () => {
         const engineLoad = Number(await page.getByRole('meter', { name: 'Esfuerzo del motor' })
@@ -115,17 +118,17 @@ async function placeWorkshopPart(page: Page, partName: string, column: number, r
   await page.getByRole('button', { name: `Celda columna ${column}, fila ${row}` }).click();
 }
 
-async function assembleVehicle(page: Page, suspension = false, cargoSupports = true): Promise<void> {
+async function assembleVehicle(page: Page, equipment: {
+  seats?: number; roof?: boolean; rear?: boolean; suspension?: boolean;
+} = {}): Promise<void> {
   await placeWorkshopPart(page, 'Rueda estándar', 2, 6);
   await placeWorkshopPart(page, 'Rueda estándar', 8, 6);
   await placeWorkshopPart(page, 'Motor urbano', 7, 4);
-  await placeWorkshopPart(page, 'Asiento', 5, 4);
-  await placeWorkshopPart(page, 'Asiento', 6, 4);
-  if (cargoSupports) {
-    await placeWorkshopPart(page, 'Parrilla de techo', 2, 1);
-    await placeWorkshopPart(page, 'Portabicis posterior', 1, 5);
-  }
-  if (suspension) await placeWorkshopPart(page, 'Suspensión reforzada', 5, 6);
+  if ((equipment.seats ?? 2) >= 1) await placeWorkshopPart(page, 'Asiento', 5, 4);
+  if ((equipment.seats ?? 2) >= 2) await placeWorkshopPart(page, 'Asiento', 6, 4);
+  if (equipment.roof) await placeWorkshopPart(page, 'Parrilla de techo', 2, 1);
+  if (equipment.rear) await placeWorkshopPart(page, 'Portabicis posterior', 1, 5);
+  if (equipment.suspension) await placeWorkshopPart(page, 'Suspensión reforzada', 5, 6);
 }
 
 test('abre offline y recorre menú, niveles y taller sin errores', async ({ page }) => {
@@ -310,7 +313,9 @@ test('completa el primer recorrido y conserva el progreso tras recargar', async 
   const restoreBuild = page.getByRole('button', { name: 'Recuperar el arreglo del último nivel jugado' });
   await expect(restoreBuild).toBeEnabled();
   await restoreBuild.click();
-  await expect(page.locator('.grid-piece')).toHaveCount(8);
+  await expect(page.locator('.grid-piece')).toHaveCount(6);
+  const launch = page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' });
+  await expect(launch).toBeEnabled();
 
   await page.reload();
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'MENU');
@@ -357,7 +362,7 @@ test('anima la portada con composiciones, pasajeros, terreno y cobros variables'
 });
 
 test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(480_000);
   await page.goto(artifactUrl);
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await page.getByRole('button', { name: /Primer recorrido/ }).click();
@@ -370,7 +375,7 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
 
   await page.getByRole('button', { name: /Siguiente: Subida al cerro/ }).click();
   await dismissGoals(page);
-  await assembleVehicle(page, false, false);
+  await assembleVehicle(page);
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, [
     'cerro-uno-a', 'cerro-dos-a', 'cerro-tres-a', 'cerro-cuatro-a',
@@ -378,10 +383,10 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
 
   await page.getByRole('button', { name: /Siguiente: Día de mercado/ }).click();
   await dismissGoals(page);
-  await assembleVehicle(page);
+  await assembleVehicle(page, { roof: true });
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, [
-    'mercado-uno-a', 'mercado-dos-a', 'mercado-tres-a', 'mercado-cuatro-a',
+    'mercado-uno-a', 'mercado-uno-b', 'mercado-tres-b', 'mercado-cuatro-b',
   ]);
   await expect(page.getByRole('heading', { name: '¡Buena ruta!' })).toBeVisible();
   await page.getByText('Ver detalles', { exact: true }).click();
@@ -389,18 +394,18 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
 
   await page.getByRole('button', { name: /Siguiente: Pista dañada/ }).click();
   await dismissGoals(page);
-  await assembleVehicle(page, true);
+  await assembleVehicle(page, { roof: true, rear: true });
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, [
-    'pista-uno-a', 'pista-dos-a', 'pista-tres-a', 'pista-cuatro-a',
+    'pista-uno-a', 'pista-uno-b', 'pista-tres-a', 'pista-cuatro-a', 'pista-cuatro-b',
   ]);
 
   await page.getByRole('button', { name: /Siguiente: Hora punta/ }).click();
   await dismissGoals(page);
-  await assembleVehicle(page, true);
+  await assembleVehicle(page, { roof: true, rear: true, suspension: true });
   await page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' }).click();
   await completeRoute(page, [
-    'punta-uno-a', 'punta-dos-a', 'punta-tres-a', 'punta-cuatro-a', 'punta-cinco-a',
+    'punta-uno-a', 'punta-uno-b', 'punta-dos-b', 'punta-cuatro-a', 'punta-cuatro-b',
   ]);
   await page.getByText('Ver detalles', { exact: true }).click();
   await expect(page.getByText('Estabilidad').locator('..')).toContainText('%');
@@ -408,6 +413,15 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
   await page.reload();
   await page.getByRole('button', { name: 'Empezar recorrido' }).click();
   await expect(page.getByRole('button', { name: /Hora punta/ })).toBeEnabled();
+  await page.getByRole('button', { name: /Primer recorrido/ }).click();
+  await dismissGoals(page);
+  await page.getByRole('button', { name: 'Recuperar el arreglo del último nivel jugado' }).click();
+  const overBudgetLaunch = page.getByRole('button', { name: 'Iniciar recorrido de 60 segundos' });
+  await expect(overBudgetLaunch).toBeDisabled();
+  await expect(overBudgetLaunch).toHaveClass(/is-over-budget/);
+  await expect(page.getByText(/Faltan S\/ 100/)).toBeVisible();
+  expect(await overBudgetLaunch.evaluate((element) =>
+    getComputedStyle(element).backgroundColor)).toBe('rgb(166, 140, 84)');
   const finalRevenue = await page.evaluate(() => {
     const raw = window.localStorage.getItem('tunea-tu-combi:save:v1');
     if (!raw) return 0;
@@ -421,12 +435,51 @@ test('desbloquea y completa la campaña de cinco recorridos', async ({ page }) =
 
 async function completeRoute(page: Page, deliveries: readonly string[]): Promise<void> {
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'PLAYING');
+  const obstacleXs: Record<string, readonly number[]> = {
+    primer: [23, 74], cerro: [41, 82], mercado: [19, 69, 100],
+    pista: [23, 51, 77, 106], punta: [18, 40, 64, 89, 113],
+  };
+  const route = deliveries[0]?.split('-')[0] ?? '';
+  const obstacles = obstacleXs[route] ?? [];
+  let nextObstacle = 0;
   await page.keyboard.down('d');
   for (const requestId of deliveries) {
+    const onboard = JSON.parse(await page.locator('canvas').getAttribute('data-onboard-request-ids') ?? '[]') as
+      string[];
+    if (onboard.includes(requestId)) continue;
+    const waiting = JSON.parse(await page.locator('canvas').getAttribute('data-waiting-requests') ?? '[]') as
+      { id: string; originX: number }[];
+    const originX = waiting.find((item) => item.id === requestId)?.originX ?? Number.POSITIVE_INFINITY;
+    while (nextObstacle < obstacles.length && (obstacles[nextObstacle] ?? 0) < originX) {
+      await slowForObstacle(page, obstacles[nextObstacle] ?? 0);
+      nextObstacle += 1;
+    }
     await clickRequestOnRoute(page, requestId);
+  }
+  while (nextObstacle < obstacles.length) {
+    await slowForObstacle(page, obstacles[nextObstacle] ?? 0);
+    nextObstacle += 1;
   }
   await expect(page.locator('#app')).toHaveAttribute('data-app-state', 'RESULTS', { timeout: 45_000 });
   await page.keyboard.up('d');
   await expect(page.getByRole('heading', { name: '¡Buena ruta!' })).toBeVisible();
   await expect(page.getByLabel('3 de 3 estrellas')).toBeVisible();
+}
+
+async function slowForObstacle(page: Page, obstacleX: number): Promise<void> {
+  const canvas = page.locator('canvas');
+  await expect.poll(async () => {
+    const engineLoad = Number(await page.getByRole('meter', { name: 'Esfuerzo del motor' })
+      .getAttribute('aria-valuenow'));
+    if (engineLoad >= 82) await page.keyboard.up('d');
+    else await page.keyboard.down('d');
+    return Number(await canvas.getAttribute('data-vehicle-x'));
+  }, { timeout: 20_000, intervals: [50] }).toBeGreaterThanOrEqual(obstacleX - 4.5);
+  await page.keyboard.up('d');
+  await engageControlledBrake(page, 100);
+  await expect.poll(async () => Math.abs(Number.parseFloat(
+    await page.locator('[data-ui="speed"]').innerText())),
+  { timeout: 5_000 }).toBeLessThanOrEqual(1.5);
+  await page.keyboard.up('ArrowDown');
+  await page.keyboard.down('d');
 }

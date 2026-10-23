@@ -199,6 +199,20 @@ export class PhysicsWorld {
     this.#body.torqueNm += cross(subtract(point, this.#body.position), force);
   }
 
+  applyRoadImpact(impulseNs: number): number {
+    if (!Number.isFinite(impulseNs) || impulseNs < 0) {
+      throw new Error('El impacto debe ser finito y no negativo.');
+    }
+    if (impulseNs === 0) return 0;
+    const intactBefore = this.#joints.filter((joint) => !joint.broken).length;
+    this.#body.velocity = {
+      x: this.#body.velocity.x * Math.max(0.65, 1 - impulseNs / 40000),
+      y: this.#body.velocity.y + Math.min(1.2, impulseNs / this.#body.massKg * 0.08),
+    };
+    this.#breakOverloadedJoints(impulseNs);
+    return intactBefore - this.#joints.filter((joint) => !joint.broken).length;
+  }
+
   setDisplayPose(position: Vector2, angleRadians: number, velocity: Vector2): void {
     const next = { ...this.#body, position, angleRadians, velocity };
     if (!isFiniteBody(next)) throw new Error('La pose visual debe permanecer dentro del mundo físico.');

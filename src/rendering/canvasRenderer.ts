@@ -188,6 +188,7 @@ function draw(
   drawRouteBoard(context, width, snapshot);
   drawTerrain(context, width, height, world);
   drawStreetDetails(context, width, height, snapshot.vehicleX, world);
+  drawRoadObstacles(context, width, height, snapshot, world);
   drawPoliceBarrier(context, width, height, snapshot, world);
   if (!snapshot.reducedMotion) drawRoadDust(context, width, height, snapshot, world);
   drawCombi(context, width, height, snapshot, world);
@@ -743,6 +744,53 @@ function drawTerrain(
     context.lineTo(end.x, end.y);
   }
   context.stroke();
+}
+
+function drawRoadObstacles(context: CanvasRenderingContext2D, width: number, height: number,
+  snapshot: AppSnapshot, world: WorldSnapshot): void {
+  if (snapshot.state !== 'PLAYING' && snapshot.state !== 'PAUSED') return;
+  const level = LEVELS.find((candidate) => candidate.id === snapshot.selectedLevelId);
+  if (!level) return;
+  const scale = worldScale(width, height);
+  for (const obstacle of level.obstacles) {
+    const ground = terrainHeightAt(world.terrain, obstacle.x);
+    const point = worldToScreen({ x: obstacle.x, y: ground }, world, width, height);
+    if (point.x < -scale || point.x > width + scale) continue;
+    context.save();
+    if (obstacle.kind === 'pothole') {
+      context.fillStyle = '#171c22';
+      context.beginPath();
+      context.ellipse(point.x, point.y + 3, scale * 0.56, scale * 0.12, 0, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = '#f4c459';
+      context.lineWidth = 3;
+      context.stroke();
+    } else if (obstacle.kind === 'speedBump') {
+      context.fillStyle = '#f4c459';
+      context.beginPath();
+      context.moveTo(point.x - scale * 0.5, point.y);
+      context.lineTo(point.x, point.y - scale * 0.18);
+      context.lineTo(point.x + scale * 0.5, point.y);
+      context.closePath();
+      context.fill();
+      context.strokeStyle = '#20262d';
+      context.lineWidth = 3;
+      context.stroke();
+    } else {
+      context.fillStyle = '#b06b3c';
+      context.beginPath();
+      context.moveTo(point.x - scale * 0.24, point.y);
+      context.lineTo(point.x - scale * 0.14, point.y - scale * 0.28);
+      context.lineTo(point.x + scale * 0.16, point.y - scale * 0.23);
+      context.lineTo(point.x + scale * 0.27, point.y);
+      context.closePath();
+      context.fill();
+      context.strokeStyle = '#3e2b23';
+      context.lineWidth = 3;
+      context.stroke();
+    }
+    context.restore();
+  }
 }
 
 function drawCombi(

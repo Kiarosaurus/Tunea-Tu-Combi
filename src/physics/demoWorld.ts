@@ -1,4 +1,5 @@
 import { PART_CATALOG } from '../data/parts';
+import { LEVELS, type RoadObstacle } from '../data/levels';
 import { PhysicsWorld, type JointMount, type RigidBody, type SuspensionParameters, type TerrainSegment } from './world';
 
 const REINFORCED_SUSPENSION: SuspensionParameters = {
@@ -116,7 +117,9 @@ export function createLevelOneWorld(equipment: LevelOneEquipment = {}): PhysicsW
 }
 
 export function createRideWorld(levelId: string, equipment: LevelOneEquipment = {}): PhysicsWorld {
-  const terrain = terrainForLevel(levelId);
+  const level = LEVELS.find((candidate) => candidate.id === levelId);
+  if (!level) throw new Error(`No hay terreno jugable para ${levelId}.`);
+  const terrain = addPotholes(terrainForLevel(levelId), level.obstacles);
   const centerOfMass = equipment.centerOfMass ?? { x: 0, y: 0 };
   const configuredWheels = equipment.wheelOffsets;
   const wheelOffsets = configuredWheels === undefined
@@ -158,6 +161,27 @@ export function createRideWorld(levelId: string, equipment: LevelOneEquipment = 
     offset: { x: -1.7 - centerOfMass.x, y: -centerOfMass.y },
     massKg: partMass('rearCarrier'), breakImpulseNs: threshold });
   return new PhysicsWorld(body, terrain, joints);
+}
+
+function addPotholes(terrain: readonly TerrainSegment[], obstacles: readonly RoadObstacle[]):
+  readonly TerrainSegment[] {
+  const potholes = obstacles.filter((obstacle) => obstacle.kind === 'pothole');
+  const points = new Set(terrain.flatMap((segment) => [segment.start.x, segment.end.x]));
+  for (const pothole of potholes) {
+    points.add(pothole.x - 1.2);
+    points.add(pothole.x);
+    points.add(pothole.x + 1.2);
+  }
+  const ordered = [...points].sort((left, right) => left - right);
+  const heightAt = (x: number): number => menuTerrainHeightAt(terrain, x) -
+    potholes.reduce((depth, pothole) =>
+      depth + 0.14 * Math.max(0, 1 - Math.abs(x - pothole.x) / 1.2), 0);
+  return ordered.slice(1).map((endX, index) => {
+    const startX = ordered[index];
+    if (startX === undefined) throw new Error('El terreno carece de inicio.');
+    return { start: { x: startX, y: heightAt(startX) },
+      end: { x: endX, y: heightAt(endX) } };
+  });
 }
 
 function terrainForLevel(levelId: string): readonly TerrainSegment[] {

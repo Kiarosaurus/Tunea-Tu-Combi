@@ -115,6 +115,8 @@ previsualiza la huella completa y avisa si la colocación es válida.
 Después de iniciar un recorrido, el taller recuerda esa distribución. El botón
 `Recuperar combi` la reconstruye en cualquier nivel y compra únicamente las
 piezas que falten con el presupuesto del intento actual.
+Si el arreglo supera el presupuesto, aparece completo con el importe pendiente;
+`A rodar` queda desactivado hasta retirar y reembolsar piezas suficientes.
 La cuadrícula está integrada en la silueta lateral de la combi: motor, asientos,
 parrilla, portabicis y suspensión quedan visibles tanto al construir como al
 conducir. La información del taller se concentra en una barra breve de recursos.
@@ -165,12 +167,15 @@ aportan función. El fondo usa capas periódicas de paralaje para que nubes, cer
 edificios y mobiliario continúen sin saltos al avanzar.
 
 La subida al cerro introduce una pendiente prolongada y solicitudes en competencia. El día
-de mercado exige asiento, parrilla y portabicis posterior; combina pasajeros,
-carga alta y scooter sobre terreno ondulado. Cada recorrido conserva su propia
+de mercado permite combinar asientos con parrilla para transportar carga alta
+sobre terreno ondulado. Cada recorrido conserva su propia
 cuota, meta, semilla y apariencia provisional.
 
-Pista dañada usa baches y rampas para comparar uniones rígidas contra suspensión
-reforzada. Hora punta combina pendientes, ondulaciones y diez oportunidades.
+Todas las rutas incluyen baches y objetos en la calzada. Cruzarlos a velocidad
+alta puede desprender soportes y perder carga; frenar reduce el impacto. Pista
+dañada combina esas amenazas con rampas, y hora punta añade diez oportunidades.
+Los presupuestos de S/ 30, 30, 60, 95 y 130 favorecen combinaciones distintas
+de asientos, soportes y suspensión.
 Las rutas miden entre 96 m y 120 m para ocupar una parte significativa del minuto.
 La selección muestra dominio de cero a tres estrellas y el reto de cada ruta; el
 mejor ingreso se conserva en el guardado por compatibilidad, pero no se presenta

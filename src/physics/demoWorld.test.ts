@@ -5,8 +5,30 @@ import { buyPart } from '../game/model';
 import { createInitialGameModel, gridBuildStats, gridForModel, placeGridPart } from '../game/model';
 import { createRideWorld } from './demoWorld';
 import { driveForceN } from './driveModel';
+import { LEVELS } from '../data/levels';
 
 describe('mundos de la campaña', () => {
+  it('incluye baches y objetos con riesgo creciente en las cinco rutas', () => {
+    expect(LEVELS.map((level) => level.buildBudget)).toEqual([30, 30, 60, 95, 130]);
+    for (const level of LEVELS) {
+      expect(level.obstacles.some((obstacle) => obstacle.kind === 'pothole')).toBe(true);
+      expect(level.obstacles.some((obstacle) => obstacle.kind !== 'pothole')).toBe(true);
+      expect(level.obstacles.every((obstacle) => obstacle.x > 3 &&
+        obstacle.x < level.finishX)).toBe(true);
+      const terrain = createRideWorld(level.id).snapshot().terrain;
+      expect(terrain.some((segment) => segment.end.y < segment.start.y)).toBe(true);
+    }
+  });
+
+  it('conserva la carga a baja velocidad y desprende el soporte con un golpe rápido', () => {
+    const world = createRideWorld('pista-danada', { roofRack: true });
+    world.attachPayload('caja', 20, { x: 0, y: 0.8 }, 'roofRack');
+    expect(world.applyRoadImpact(0)).toBe(0);
+    expect(world.snapshot().joints[0]?.broken).toBe(false);
+    expect(world.applyRoadImpact(12000)).toBe(1);
+    expect(world.snapshot().joints[0]?.broken).toBe(true);
+    expect(world.snapshot().lostPayloadIds).toContain('caja');
+  });
   it('desplaza la geometría física respecto del centro de gravedad calculado', () => {
     const centered = createRideWorld('primer-recorrido');
     const offset = { x: 0.2, y: 0.1 };

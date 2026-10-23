@@ -54,6 +54,7 @@ export interface CompletedLevel {
 
 export interface GameModel {
   readonly wallet: number;
+  readonly budgetDebt?: number;
   readonly ownedParts: Inventory;
   readonly pendingPurchases: Inventory;
   readonly workshopBuild: SerializedBuild;
@@ -100,6 +101,7 @@ export function emptyInventory(): Inventory {
 export function createInitialGameModel(): GameModel {
   return {
     wallet: INITIAL_WALLET,
+    budgetDebt: 0,
     ownedParts: { ...emptyInventory(), chassis: 1, wheel: 2, engine: 1, seat: 1 },
     pendingPurchases: emptyInventory(),
     workshopBuild: {
@@ -122,6 +124,7 @@ export function createInitialGameModel(): GameModel {
 export function createDemoGameModel(): GameModel {
   return {
     wallet: 500,
+    budgetDebt: 0,
     ownedParts: { chassis: 1, wheel: 2, engine: 1, seat: 2,
       roofRack: 1, rearCarrier: 1, suspension: 1 },
     pendingPurchases: emptyInventory(),
@@ -205,13 +208,12 @@ export function restoreLastRideBuild(model: GameModel): GameModel {
     ownedParts[part.kind] += missing;
     pendingPurchases[part.kind] += missing;
   }
-  if (cost > model.wallet) {
-    throw new Error(`Faltan S/ ${cost - model.wallet} para recuperar el último arreglo.`);
-  }
+  const totalDue = cost + (model.budgetDebt ?? 0);
   const workshopGrid = template.map((placement) => ({ ...placement }));
   return {
     ...model,
-    wallet: model.wallet - cost,
+    wallet: Math.max(0, model.wallet - totalDue),
+    budgetDebt: Math.max(0, totalDue - model.wallet),
     ownedParts,
     pendingPurchases,
     workshopGrid,
@@ -291,9 +293,12 @@ export function refundPart(model: GameModel, kind: PartKind): GameModel {
     ? model.workshopGrid.filter((item) => item.kind === kind).length
     : Object.values(model.workshopBuild).filter((placedKind) => placedKind === kind).length;
   if (placed >= model.ownedParts[kind]) throw new Error('Retira primero una pieza colocada.');
+  const refund = priceOf(kind);
+  const debtPayment = Math.min(model.budgetDebt ?? 0, refund);
   return {
     ...model,
-    wallet: model.wallet + priceOf(kind),
+    wallet: model.wallet + refund - debtPayment,
+    budgetDebt: (model.budgetDebt ?? 0) - debtPayment,
     ownedParts: { ...model.ownedParts, [kind]: model.ownedParts[kind] - 1 },
     pendingPurchases: model.pendingPurchases[kind] > 0
       ? { ...model.pendingPurchases, [kind]: model.pendingPurchases[kind] - 1 }

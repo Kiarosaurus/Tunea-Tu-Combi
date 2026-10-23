@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { LocalSaveRepository, type StorageLike } from '../persistence/saveRepository';
 import { createSaveData } from '../persistence/saveRepository';
-import { createDemoGameModel, createInitialGameModel, gridBuildStats, gridForModel, placeGridPart } from '../game/model';
+import { createDemoGameModel, createInitialGameModel, gridBuildStats, gridForModel,
+  placeGridPart, rememberLastRideBuild } from '../game/model';
 import { personColorForVariant } from '../game/requests';
+import { LEVELS } from '../data/levels';
 import { AppController } from './appController';
 
 function memoryStorage(): StorageLike {
@@ -47,6 +49,17 @@ function addCargoSupports(controller: AppController, suspension = false): void {
 }
 
 function completeRide(controller: AppController): void {
+  const planned: Record<string, readonly string[]> = {
+    'primer-recorrido': ['primer-pasajero', 'segundo-pasajero', 'tercer-pasajero'],
+    'subida-al-cerro': ['cerro-uno-a', 'cerro-dos-a', 'cerro-tres-a', 'cerro-cuatro-a'],
+    'dia-de-mercado': ['mercado-uno-a', 'mercado-uno-b', 'mercado-tres-b', 'mercado-cuatro-b'],
+    'pista-danada': ['pista-uno-a', 'pista-uno-b', 'pista-tres-a', 'pista-cuatro-a', 'pista-cuatro-b'],
+    'hora-punta': ['punta-uno-a', 'punta-uno-b', 'punta-dos-b', 'punta-cuatro-a', 'punta-cuatro-b'],
+  };
+  const level = LEVELS.find((item) => item.id === controller.snapshot.selectedLevelId);
+  const slowedObstacles = new Set<string>();
+  const primedObstacles = new Set<string>();
+  const ignoredRequests = new Set<string>();
   controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
   for (let index = 0; index < 3700 && controller.snapshot.state === 'PLAYING'; index += 1) {
     controller.update(1 / 60);
@@ -56,19 +69,51 @@ function completeRide(controller: AppController): void {
     const waitingRequests = snapshot.ride?.requests.filter((progress) =>
       progress.status === 'waiting') ?? [];
     const waiting = onboardCount < snapshot.passengerCapacity
-      ? waitingRequests.find((progress) => !progress.request.id.endsWith('-b') &&
-        !progress.request.id.includes('alternativo') &&
-        !progress.request.id.includes('fuera-ruta') && progress.request.id !== 'carga-terminal') ??
-        waitingRequests[0]
+      ? (planned[level?.id ?? ''] ?? []).map((id) => waitingRequests.find((progress) =>
+        progress.request.id === id && !ignoredRequests.has(id) &&
+        progress.request.originX >= snapshot.vehicleX - 2.3))
+        .find((progress) => progress !== undefined)
       : undefined;
+    const obstacle = level?.obstacles.find((item) => !slowedObstacles.has(item.id) &&
+      snapshot.vehicleX >= item.x - 3.5 && snapshot.vehicleX < item.x);
+    if (obstacle && (!waiting || waiting.request.originX > obstacle.x + 2)) {
+      if (!primedObstacles.has(obstacle.id)) {
+        for (let brake = 0; brake < 4; brake += 1) {
+          controller.dispatch({ type: 'SET_BRAKE', value: false });
+          controller.dispatch({ type: 'SET_BRAKE', value: true });
+          if (controller.snapshot.brakeEffectivenessPercent === 100) break;
+        }
+        primedObstacles.add(obstacle.id);
+      }
+      if (Math.abs(snapshot.speedMps) <= obstacle.safeSpeedMps * 0.7) {
+        slowedObstacles.add(obstacle.id);
+        controller.dispatch({ type: 'SET_BRAKE', value: false });
+        controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+      } else {
+        controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
+        controller.dispatch({ type: 'SET_BRAKE', value: true });
+      }
+      continue;
+    }
     if (waiting) {
       const distance = waiting.request.originX - snapshot.vehicleX;
-      const shouldBrake = distance < Math.max(2.5, Math.abs(snapshot.speedMps) * 1.35) &&
-        distance > -2.3;
-      controller.dispatch({ type: 'SET_THROTTLE', value: shouldBrake ? 0 : 1 });
-      controller.dispatch({ type: 'SET_BRAKE', value: shouldBrake });
       if (Math.abs(distance) < 2.3 && Math.abs(snapshot.speedMps) <= 0.35) {
         controller.dispatch({ type: 'COLLECT_REQUEST', requestId: waiting.request.id });
+        if (!controller.snapshot.ride?.requests.some((progress) =>
+          progress.request.id === waiting.request.id && progress.status === 'onboard')) {
+          ignoredRequests.add(waiting.request.id);
+        }
+        controller.dispatch({ type: 'SET_BRAKE', value: false });
+        controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
+      } else if (distance < 9 && snapshot.speedMps >
+        Math.max(0.2, Math.min(3.5, (distance - 0.2) * 0.75)) + 0.2) {
+        controller.dispatch({ type: 'SET_THROTTLE', value: 0 });
+        for (let brake = 0; brake < 4; brake += 1) {
+          controller.dispatch({ type: 'SET_BRAKE', value: false });
+          controller.dispatch({ type: 'SET_BRAKE', value: true });
+          if (controller.snapshot.brakeEffectivenessPercent === 100) break;
+        }
+      } else {
         controller.dispatch({ type: 'SET_BRAKE', value: false });
         controller.dispatch({ type: 'SET_THROTTLE', value: 1 });
       }
@@ -232,8 +277,13 @@ describe('flujo vertical del primer recorrido', () => {
   });
 
   it('equipa la suspensión comprada en el vehículo del recorrido', () => {
-    const controller = new AppController(new LocalSaveRepository(memoryStorage()));
-    enterWorkshop(controller);
+    const storage = memoryStorage();
+    new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(4), false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    controller.dispatch({ type: 'BOOT_COMPLETED' });
+    controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
+    controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'pista-danada' });
+    assembleBaseVehicle(controller);
     controller.dispatch({ type: 'BUY_PART', kind: 'suspension' });
     controller.dispatch({ type: 'PLACE_PART', kind: 'suspension', anchor: 'suspension' });
     controller.dispatch({ type: 'START_RIDE' });
@@ -293,18 +343,20 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'dia-de-mercado' });
     assembleBaseVehicle(controller);
-    addCargoSupports(controller);
+    addPassengerSeat(controller);
+    controller.dispatch({ type: 'BUY_PART', kind: 'roofRack' });
+    controller.dispatch({ type: 'PLACE_GRID_PART', kind: 'roofRack', column: 1, row: 0 });
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
     expect(controller.snapshot.vehicleX).toBeGreaterThan(4);
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(20);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(19);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(4);
     expect(controller.snapshot.ride?.maximumPayloadMassKg).toBeGreaterThan(30);
   });
 
-  it('supera la pista dañada con suspensión y desbloquea el nivel 5', () => {
+  it('supera la pista dañada con soportes y frenadas y desbloquea el nivel 5', () => {
     const storage = memoryStorage();
     new LocalSaveRepository(storage).save(createSaveData(fullyEquippedModel(4), false));
     const controller = new AppController(new LocalSaveRepository(storage));
@@ -312,11 +364,11 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'OPEN_LEVEL_SELECT' });
     controller.dispatch({ type: 'SELECT_LEVEL', levelId: 'pista-danada' });
     assembleBaseVehicle(controller);
-    addCargoSupports(controller, true);
+    addCargoSupports(controller);
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(20);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(23);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
   });
@@ -333,7 +385,7 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'START_RIDE' });
     completeRide(controller);
     expect(controller.snapshot.state).toBe('RESULTS');
-    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(22);
+    expect(controller.snapshot.ride?.deliveredRevenue).toBeGreaterThanOrEqual(25);
     expect(controller.snapshot.won).toBe(true);
     expect(controller.snapshot.game.unlockedLevel).toBe(5);
     expect(controller.snapshot.game.completedLevels['hora-punta']).toBeDefined();
@@ -533,5 +585,27 @@ describe('flujo vertical del primer recorrido', () => {
     controller.dispatch({ type: 'RESTORE_LAST_BUILD' });
     expect(gridForModel(controller.snapshot.game)).toEqual(previousGrid);
     expect(controller.snapshot.message).toContain('Último arreglo recuperado');
+  });
+
+  it('bloquea el recorrido mientras una plantilla recuperada supera el presupuesto', () => {
+    const storage = memoryStorage();
+    const demo = rememberLastRideBuild(createDemoGameModel());
+    new LocalSaveRepository(storage).save(createSaveData({ ...demo, wallet: 30 }, false));
+    const controller = new AppController(new LocalSaveRepository(storage));
+    enterWorkshop(controller, false);
+    controller.dispatch({ type: 'RESTORE_LAST_BUILD' });
+    expect(controller.snapshot.game.budgetDebt).toBeGreaterThan(0);
+    controller.dispatch({ type: 'START_RIDE' });
+    expect(controller.snapshot.state).toBe('WORKSHOP');
+    expect(controller.snapshot.message).toContain('Faltan S/');
+    for (const id of ['roofRack-1', 'rearCarrier-1', 'suspension-1']) {
+      controller.dispatch({ type: 'REMOVE_GRID_PART', placementId: id });
+    }
+    for (const kind of ['roofRack', 'rearCarrier', 'suspension'] as const) {
+      controller.dispatch({ type: 'REFUND_PART', kind });
+    }
+    expect(controller.snapshot.game.budgetDebt).toBe(0);
+    controller.dispatch({ type: 'START_RIDE' });
+    expect(controller.snapshot.state).toBe('PLAYING');
   });
 });

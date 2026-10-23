@@ -1846,6 +1846,14 @@ button:focus-visible {
   transform: rotate(-1deg);
 }
 
+.workshop-toolbar .launch-action.is-over-budget:disabled {
+  opacity: 1;
+  border-color: #ae9257;
+  background: #a68c54;
+  color: #342b18;
+  box-shadow: none;
+}
+
 .build-status {
   min-height: 16px;
   margin: 5px 4px -3px;

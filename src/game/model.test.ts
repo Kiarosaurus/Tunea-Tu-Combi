@@ -158,9 +158,15 @@ describe('taller y economía', () => {
     expect(restored.pendingPurchases.seat).toBe(1);
   });
 
-  it('explica cuando el presupuesto no alcanza para recuperar el arreglo', () => {
+  it('recupera un arreglo caro y desbloquea la salida al reembolsar piezas', () => {
     const remembered = rememberLastRideBuild(createDemoGameModel());
     const emptyBudget = prepareLevelWorkshop(remembered, 0);
-    expect(() => restoreLastRideBuild(emptyBudget)).toThrow('Faltan S/');
+    const restored = restoreLastRideBuild(emptyBudget);
+    expect(restored.wallet).toBe(0);
+    expect(restored.budgetDebt).toBeGreaterThan(0);
+    expect(gridForModel(restored)).toEqual(gridForModel(remembered));
+    const unplaced = removeGridPart(restored, 'seat-2');
+    const refunded = refundPart(unplaced, 'seat');
+    expect(refunded.budgetDebt).toBeLessThan(restored.budgetDebt ?? 0);
   });
 });

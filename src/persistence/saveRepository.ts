@@ -88,6 +88,7 @@ export function createSaveData(
 export function isSaveDataV1(value: unknown): value is SaveDataV1 {
   if (!isRecord(value) || value.version !== 1 ||
     !isNonnegativeInteger(value.wallet) ||
+    (value.budgetDebt !== undefined && !isNonnegativeInteger(value.budgetDebt)) ||
     !isLevelNumber(value.unlockedLevel) ||
     !isInventory(value.ownedParts) || !isInventory(value.pendingPurchases) ||
     !isBuild(value.workshopBuild, value.ownedParts) ||
